@@ -13,6 +13,27 @@ organiseras i grupper (team). GitHub API används som datalager — inget eget b
 - Gruppfilter
 - Enkelt delat lösenord för åtkomst (inte riktig säkerhet)
 
+## Datafiler
+
+Appen läser och skriver två JSON-datafiler via GitHub API:
+
+- **`data/registry.json`** — innehåller personer och grupper
+- **`data/vacations.json`** — innehåller semesterposter
+
+Vid start och vid varje uppdatering hämtas dessa filer från din GitHub-gren.
+Ändringar sparas tillbaka via GitHub API. För att applikationen ska fungera korrekt
+måste miljövariablerna i `.env` vara korrekt ifyllda:
+
+- `VITE_GITHUB_OWNER` — repo-ägare (t.ex. `nord-`)
+- `VITE_GITHUB_REPO` — repo-namn (t.ex. `vactionnode`)
+- `VITE_GITHUB_PAT` — GitHub Personal Access Token med åtkomst till repot
+- `VITE_GITHUB_BRANCH` — vilken branch datafiler ligger på (t.ex. `main`)
+- `VITE_REGISTRY_PATH` — sökväg till registry.json (t.ex. `data/registry.json`)
+- `VITE_VACATIONS_PATH` — sökväg till vacations.json (t.ex. `data/vacations.json`)
+- `VITE_PASSWORD` — enkelt lösenord för app-åtkomst
+
+Se `.env.example` för exempel på värden.
+
 ## Status
 
 Under uppbyggnad. Designen finns i
@@ -24,6 +45,18 @@ Under uppbyggnad. Designen finns i
 cp .env.example .env   # fyll i värden
 npm install
 npm run dev
+```
+
+### Köra helt lokalt (utan GitHub)
+
+Sätt `VITE_DATA_BACKEND=local` i `.env` för att lagra all data i webbläsarens
+localStorage. Då krävs varken PAT eller repo — bra för att smoke-testa
+gränssnittet offline. `VITE_GITHUB_*`-variablerna ignoreras i det läget.
+
+Hela testsviten körs alltid lokalt utan nätverk:
+
+```bash
+npm test -- --run
 ```
 
 ## Deploy
