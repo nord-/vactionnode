@@ -2,6 +2,9 @@ const env = import.meta.env;
 
 export default {
   password: env.VITE_PASSWORD,
+  // 'github' (default) läser/skriver via GitHub API; 'local' använder localStorage
+  // för att kunna köra appen helt utan GitHub (dev/smoke-test).
+  dataBackend: env.VITE_DATA_BACKEND || 'github',
   github: {
     token: env.VITE_GITHUB_PAT,
     owner: env.VITE_GITHUB_OWNER,

@@ -47,6 +47,18 @@ npm install
 npm run dev
 ```
 
+### Köra helt lokalt (utan GitHub)
+
+Sätt `VITE_DATA_BACKEND=local` i `.env` för att lagra all data i webbläsarens
+localStorage. Då krävs varken PAT eller repo — bra för att smoke-testa
+gränssnittet offline. `VITE_GITHUB_*`-variablerna ignoreras i det läget.
+
+Hela testsviten körs alltid lokalt utan nätverk:
+
+```bash
+npm test -- --run
+```
+
 ## Deploy
 
 Deploy sker manuellt till GitHub Pages med `gh-pages`-paketet från en miljö där

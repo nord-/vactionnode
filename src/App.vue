@@ -67,6 +67,7 @@
 import { ref, computed, onMounted } from 'vue';
 import config from './config.js';
 import { createGithubClient } from './lib/githubClient.js';
+import { createLocalClient } from './lib/localClient.js';
 import { createDataStore } from './lib/dataStore.js';
 import { createStore } from './composables/useStore.js';
 import { defaultRange } from './composables/useDefaultRange.js';
@@ -79,12 +80,15 @@ import CalendarControls from './components/CalendarControls.vue';
 import CalendarGrid from './components/CalendarGrid.vue';
 import VacationModal from './components/VacationModal.vue';
 
-const client = createGithubClient({
-  owner: config.github.owner,
-  repo: config.github.repo,
-  branch: config.github.branch,
-  token: config.github.token,
-});
+const client =
+  config.dataBackend === 'local'
+    ? createLocalClient()
+    : createGithubClient({
+        owner: config.github.owner,
+        repo: config.github.repo,
+        branch: config.github.branch,
+        token: config.github.token,
+      });
 const dataStore = createDataStore({
   client,
   registryPath: config.github.registryPath,
