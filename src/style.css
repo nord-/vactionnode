@@ -1,0 +1,5 @@
+/* @import måste stå före övriga regler enligt CSS-spec. */
+@import '@mdi/font/css/materialdesignicons.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

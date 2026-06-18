@@ -1,0 +1,40 @@
+{
+  "name": "vactionnode",
+  "version": "1.0.0",
+  "description": "Semesterkalender — en Vue 3 + Vite-app på GitHub Pages där personer matar in sina semesterdagar och ser allas frånvaro i en Excel-liknande kalendervy. Personer organiseras i grupper (team). GitHub API används som datalager — inget eget backend.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "deploy": "vite build && gh-pages -d dist"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nord-/vactionnode.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/nord-/vactionnode/issues"
+  },
+  "homepage": "https://github.com/nord-/vactionnode#readme",
+  "dependencies": {
+    "@mdi/font": "^7.4.47",
+    "vue": "^3.5.38"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.7",
+    "@vue/test-utils": "^2.4.11",
+    "autoprefixer": "^10.5.0",
+    "daisyui": "^4.12.24",
+    "gh-pages": "^6.3.0",
+    "jsdom": "^29.1.1",
+    "postcss": "^8.5.15",
+    "tailwindcss": "^3.4.19",
+    "vite": "^8.0.16",
+    "vitest": "^4.1.9"
+  }
+}
