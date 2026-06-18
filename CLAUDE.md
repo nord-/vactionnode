@@ -14,7 +14,8 @@ först; det är källan till sanning för arkitektur och krav.
 
 ## Kommandon
 
-Stacken är Vue 3 + Vite + Vitest (scaffoldas enligt planen). Förväntade kommandon:
+Stacken är Vue 3 + Vite + Tailwind/daisyUI + Vitest, ikoner via `@mdi/font`
+(scaffoldas enligt planen). Förväntade kommandon:
 
 - `npm run dev` — utvecklingsserver
 - `npm run build` — produktionsbygge till `dist/`

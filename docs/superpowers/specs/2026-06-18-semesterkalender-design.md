@@ -16,6 +16,9 @@ se och ändra allt.
 ## 2. Teknisk stack
 
 - **Frontend:** Vue 3 + Vite
+- **Styling:** Tailwind CSS + daisyUI (daisyUI för UI-skalet — knappar, modaler,
+  dropdowns, formulär; ren Tailwind för den anpassade kalender-griden)
+- **Ikoner:** Material Design Icons via `@mdi/font` (webfont, cachas i browsern)
 - **Hosting:** GitHub Pages (statisk), deploy via `gh-pages`-paketet
 - **Datalagring:** två JSON-filer i ett GitHub-repo, läses/skrivs via GitHub API
 - **Tester:** Vitest
