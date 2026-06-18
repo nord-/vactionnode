@@ -86,13 +86,18 @@ export default defineConfig({
 `tailwind.config.js`:
 
 ```js
+import daisyui from 'daisyui';
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./index.html', './src/**/*.{vue,js}'],
   theme: { extend: {} },
-  plugins: [require('daisyui')],
+  plugins: [daisyui],
 };
 ```
+
+> Obs: `package.json` har `"type": "module"`, så configfilerna är ESM. Använd
+> `import`, aldrig `require()` — det senare kraschar bygget.
 
 `postcss.config.js`:
 
@@ -127,10 +132,11 @@ export default {
 `src/style.css`:
 
 ```css
+/* @import måste stå före övriga regler enligt CSS-spec. */
+@import '@mdi/font/css/materialdesignicons.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-@import '@mdi/font/css/materialdesignicons.css';
 ```
 
 `src/main.js`:
@@ -219,10 +225,11 @@ git commit -m "chore: scaffolda Vue + Vite + Tailwind/daisyUI + Vitest"
 - Consumes: inget.
 - Produces:
   - `isoWeekNumber(date: Date): number`
+  - `isoWeekYear(date: Date): number` — ISO-veckans år (årtalet för veckans torsdag). Behövs för att gruppera kolumner per vecka korrekt över årsskiften.
   - `enumerateMonths(fromMonth: string, toMonth: string): string[]` — `'YYYY-MM'`-strängar inklusivt.
   - `monthSpanCount(fromMonth: string, toMonth: string): number` — antal månader inklusivt.
   - `generateColumns(fromMonth: string, toMonth: string): DayColumn[]` där
-    `DayColumn = { iso: string, day: number, weekdayLabel: string, weekdayIndex: number, isWeekend: boolean, isoWeek: number, monthKey: string, monthLabel: string }`.
+    `DayColumn = { iso: string, day: number, weekdayLabel: string, weekdayIndex: number, isWeekend: boolean, isoWeek: number, isoWeekYear: number, monthKey: string, monthLabel: string }`.
     `weekdayIndex`: Må=0…Sö=6. `monthKey`: `'YYYY-MM'`. `monthLabel`: t.ex. `'JUNI 2025'`.
 
 - [ ] **Step 1: Skriv failande test för `isoWeekNumber`**
@@ -231,7 +238,7 @@ git commit -m "chore: scaffolda Vue + Vite + Tailwind/daisyUI + Vitest"
 
 ```js
 import { describe, it, expect } from 'vitest';
-import { isoWeekNumber, enumerateMonths, monthSpanCount, generateColumns } from '../src/lib/dates.js';
+import { isoWeekNumber, isoWeekYear, enumerateMonths, monthSpanCount, generateColumns } from '../src/lib/dates.js';
 
 describe('isoWeekNumber', () => {
   it('2025-06-16 (måndag) är vecka 25', () => {
@@ -250,6 +257,21 @@ describe('isoWeekNumber', () => {
     expect(isoWeekNumber(new Date(2020, 11, 31))).toBe(53);
   });
 });
+
+describe('isoWeekYear', () => {
+  it('2025-12-29 (måndag) tillhör ISO-vecka 1 år 2026', () => {
+    // ISO-vecka 1/2026 börjar 2025-12-29 — veckans torsdag ligger i 2026.
+    expect(isoWeekNumber(new Date(2025, 11, 29))).toBe(1);
+    expect(isoWeekYear(new Date(2025, 11, 29))).toBe(2026);
+  });
+  it('2021-01-01 (fredag) tillhör ISO-vecka 53 år 2020', () => {
+    expect(isoWeekNumber(new Date(2021, 0, 1))).toBe(53);
+    expect(isoWeekYear(new Date(2021, 0, 1))).toBe(2020);
+  });
+  it('2025-06-16 tillhör ISO-år 2025', () => {
+    expect(isoWeekYear(new Date(2025, 5, 16))).toBe(2025);
+  });
+});
 ```
 
 - [ ] **Step 2: Kör test, verifiera FAIL**
@@ -257,28 +279,39 @@ describe('isoWeekNumber', () => {
 Run: `npm test -- --run tests/dates.test.js`
 Expected: FAIL — "isoWeekNumber is not a function".
 
-- [ ] **Step 3: Implementera `isoWeekNumber`**
+- [ ] **Step 3: Implementera `isoWeekNumber` och `isoWeekYear`**
 
 `src/lib/dates.js`:
 
 ```js
-// ISO 8601-veckonummer. Vecka 1 = veckan som innehåller årets första torsdag.
-export function isoWeekNumber(date) {
+// Flyttar ett datum (UTC) till torsdagen i samma ISO-vecka.
+function isoThursday(date) {
   const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
   const dayNum = (d.getUTCDay() + 6) % 7; // Må=0 … Sö=6
-  d.setUTCDate(d.getUTCDate() - dayNum + 3); // flytta till veckans torsdag
+  d.setUTCDate(d.getUTCDate() - dayNum + 3);
+  return d;
+}
+
+// ISO 8601-veckonummer. Vecka 1 = veckan som innehåller årets första torsdag.
+export function isoWeekNumber(date) {
+  const d = isoThursday(date);
   const firstThursday = new Date(Date.UTC(d.getUTCFullYear(), 0, 4));
   const firstDayNum = (firstThursday.getUTCDay() + 6) % 7;
   firstThursday.setUTCDate(firstThursday.getUTCDate() - firstDayNum + 3);
   const diffMs = d.getTime() - firstThursday.getTime();
   return 1 + Math.round(diffMs / (7 * 24 * 3600 * 1000));
 }
+
+// ISO-veckans år = årtalet för veckans torsdag.
+export function isoWeekYear(date) {
+  return isoThursday(date).getUTCFullYear();
+}
 ```
 
 - [ ] **Step 4: Kör test, verifiera PASS**
 
 Run: `npm test -- --run tests/dates.test.js`
-Expected: PASS (isoWeekNumber-blocket).
+Expected: PASS (isoWeekNumber- och isoWeekYear-blocken).
 
 - [ ] **Step 5: Skriv failande test för månadshjälpare**
 
@@ -366,12 +399,19 @@ describe('generateColumns', () => {
     expect(sat21.isWeekend).toBe(true);
     expect(sun22.isWeekend).toBe(true);
   });
-  it('sätter monthLabel och isoWeek', () => {
+  it('sätter monthLabel, isoWeek och isoWeekYear', () => {
     const cols = generateColumns('2025-06', '2025-06');
     const mon16 = cols.find((c) => c.iso === '2025-06-16');
     expect(mon16.monthLabel).toBe('JUNI 2025');
     expect(mon16.monthKey).toBe('2025-06');
     expect(mon16.isoWeek).toBe(25);
+    expect(mon16.isoWeekYear).toBe(2025);
+  });
+  it('sätter rätt isoWeekYear vid årsskifte', () => {
+    const cols = generateColumns('2025-12', '2026-01');
+    const dec29 = cols.find((c) => c.iso === '2025-12-29');
+    expect(dec29.isoWeek).toBe(1);
+    expect(dec29.isoWeekYear).toBe(2026);
   });
 });
 ```
@@ -414,6 +454,7 @@ export function generateColumns(fromMonth, toMonth) {
       weekdayIndex,
       isWeekend: weekdayIndex >= 5,
       isoWeek: isoWeekNumber(d),
+      isoWeekYear: isoWeekYear(d),
       monthKey: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
       monthLabel: `${MONTH_NAMES[d.getMonth()]} ${d.getFullYear()}`,
     });
@@ -892,8 +933,10 @@ describe('dataStore registry', () => {
     await store.addGroup('Team A');
     expect(files['reg.json'].groups[0].name).toBe('Team A');
     expect(files['reg.json'].groups[0].id).toBeTypeOf('string');
-    await store.addPerson('Anna');
+    const created = await store.addPerson('Anna');
     expect(files['reg.json'].persons[0]).toMatchObject({ name: 'Anna', groupId: null });
+    expect(created).toMatchObject({ name: 'Anna', groupId: null });
+    expect(created.id).toBe(files['reg.json'].persons[0].id);
   });
 
   it('removeGroup nullar groupId på medlemmar men raderar dem inte', async () => {
@@ -999,11 +1042,11 @@ export function createDataStore({ client, registryPath, vacationsPath }) {
       }));
     },
 
-    addPerson(name, groupId = null) {
-      return writeRegistry((r) => ({
-        ...r,
-        persons: [...r.persons, { id: crypto.randomUUID(), name, groupId }],
-      }));
+    // Returnerar den skapade personen (stabilt id även om writeFile gör om mutate vid 409).
+    async addPerson(name, groupId = null) {
+      const person = { id: crypto.randomUUID(), name, groupId };
+      await writeRegistry((r) => ({ ...r, persons: [...r.persons, person] }));
+      return person;
     },
 
     setPersonGroup(id, groupId) {
@@ -1320,12 +1363,14 @@ describe('useStore', () => {
     expect(store.error.value).toBe(null);
   });
 
-  it('action anropar dataStore och refreshar', async () => {
+  it('action anropar dataStore, refreshar och returnerar resultatet', async () => {
     const ds = fakeDataStore();
+    ds.addGroup = vi.fn(async () => ({ id: 'g99', name: 'B' }));
     const store = createStore(ds);
-    await store.addGroup('B');
+    const result = await store.addGroup('B');
     expect(ds.addGroup).toHaveBeenCalledWith('B');
     expect(ds.loadRegistry).toHaveBeenCalled();
+    expect(result).toEqual({ id: 'g99', name: 'B' });
   });
 
   it('sätter error vid läsfel', async () => {
@@ -1378,8 +1423,9 @@ export function createStore(dataStore) {
   function action(fn) {
     return async (...args) => {
       try {
-        await fn(...args);
+        const result = await fn(...args);
         await refresh();
+        return result;
       } catch (e) {
         error.value = e.message || 'Ett fel uppstod vid sparande.';
         throw e;
@@ -1607,15 +1653,21 @@ const monthSpans = computed(() => {
   return spans;
 });
 
-// Sammanhängande vecko-spann för colspan.
+// Sammanhängande vecko-spann för colspan. Jämför på ISO-veckans ISO-år så att
+// en vecka som spänner över ett årsskifte inte felaktigt splittras i headern.
 const weekSpans = computed(() => {
   const spans = [];
   for (const col of columns.value) {
     const last = spans.at(-1);
-    if (last && last.isoWeek === col.isoWeek && last.monthKeyYear === col.iso.slice(0, 4)) {
+    if (last && last.isoWeek === col.isoWeek && last.isoWeekYear === col.isoWeekYear) {
       last.count++;
     } else {
-      spans.push({ key: `${col.iso}-${col.isoWeek}`, isoWeek: col.isoWeek, monthKeyYear: col.iso.slice(0, 4), count: 1 });
+      spans.push({
+        key: `${col.isoWeekYear}-${col.isoWeek}`,
+        isoWeek: col.isoWeek,
+        isoWeekYear: col.isoWeekYear,
+        count: 1,
+      });
     }
   }
   return spans;
@@ -2469,12 +2521,9 @@ function onSelectPerson(id) {
 }
 
 async function onCreatePerson(name) {
-  await store.addPerson(name, null);
-  const created = store.persons.value.find((p) => p.name === name);
-  if (created) {
-    setPersonId(created.id);
-    myPersonId.value = created.id;
-  }
+  const created = await store.addPerson(name, null);
+  setPersonId(created.id);
+  myPersonId.value = created.id;
 }
 
 async function onRemovePerson(id) {
