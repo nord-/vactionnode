@@ -71,7 +71,7 @@ import { createDataStore } from './lib/dataStore.js';
 import { createStore } from './composables/useStore.js';
 import { defaultRange } from './composables/useDefaultRange.js';
 import { isAuthenticated, login } from './lib/auth.js';
-import { getPersonId, setPersonId, resolveIdentity } from './lib/identity.js';
+import { setPersonId, resolveIdentity } from './lib/identity.js';
 import LoginView from './components/LoginView.vue';
 import PersonSelectView from './components/PersonSelectView.vue';
 import AdminPanel from './components/AdminPanel.vue';
