@@ -27,6 +27,17 @@ describe('readFile', () => {
     const client = createGithubClient({ ...base, fetchImpl });
     expect(await client.readFile('x')).toEqual({ data: null, sha: null });
   });
+
+  it('returnerar tomt vid korrupt JSON', async () => {
+    const invalidJson = '{ not valid json';
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ content: b64(invalidJson), sha: 'shaX' }),
+    });
+    const client = createGithubClient({ ...base, fetchImpl });
+    expect(await client.readFile('x')).toEqual({ data: null, sha: null });
+  });
 });
 
 describe('writeFile', () => {
@@ -73,6 +84,26 @@ describe('writeFile', () => {
     const client = createGithubClient({ ...base, fetchImpl });
     await expect(client.writeFile('p', (d) => d, { emptyValue: {} })).rejects.toMatchObject({
       status: 403,
+    });
+  });
+
+  it('kastar med 409 vid uttömd maxRetries', async () => {
+    const fetchImpl = vi.fn().mockImplementation((url, opts) => {
+      // GET requests returnerar giltigt data
+      if (!opts || !opts.method || opts.method === 'GET') {
+        return Promise.resolve(jsonResponse({ items: [] }, 'sha1'));
+      }
+      // PUT requests returnerar alltid 409 konflikt
+      if (opts.method === 'PUT') {
+        return Promise.resolve({ ok: false, status: 409 });
+      }
+      return Promise.reject(new Error('Unexpected request'));
+    });
+    const client = createGithubClient({ ...base, fetchImpl });
+    await expect(
+      client.writeFile('p', (d) => ({ items: [...d.items, 'a'] }), { maxRetries: 2 })
+    ).rejects.toMatchObject({
+      status: 409,
     });
   });
 });
