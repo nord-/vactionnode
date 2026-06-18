@@ -41,6 +41,7 @@ minska skrivkonflikter.
 
 - En person utan `groupId` (eller med okänt `groupId`) hamnar i den syntetiska
   gruppen **"Ogrupperade"**, som alltid visas sist.
+- **UUID-generering:** id:n genereras i frontend med `crypto.randomUUID()`.
 
 ### `data/vacations.json` (skrivs ofta)
 
@@ -60,13 +61,27 @@ minska skrivkonflikter.
 ### Konfiguration
 
 - **GitHub PAT** och **delat lösenord** lagras som Vite-miljövariabler
-  (`VITE_GITHUB_PAT`, `VITE_PASSWORD`) — `.env` lokalt, GitHub Actions secrets vid
-  deploy. De bäddas in i den byggda bundlen.
+  (`VITE_GITHUB_PAT`, `VITE_PASSWORD`) i `.env` lokalt. De bäddas in i den byggda
+  bundlen.
 - **Avvägning:** en teknisk person kan extrahera dessa ur bundlen. För ett internt
   teamverktyg är det en accepterad risk. Lösenordet skyddar mot oavsiktlig åtkomst,
-  inte mot en angripare.
+  inte mot en angripare. Att en användare manuellt sätter `localStorage.authenticated
+  = true` utan att kunna lösenordet faller inom samma accepterade risk.
 - Repo-koordinater (owner, repo, filsökvägar, branch) konfigureras också via
   miljövariabler.
+
+### Antaganden om repo och PAT
+
+- **Repot förutsätts publikt** — läsning av datafilerna görs då utan auth.
+- **PAT-scope:** `public_repo` räcker för att skriva till ett publikt repo. Om repot
+  görs privat krävs fullt `repo`-scope **och** auth även vid läsning; det ändrar
+  förutsättningarna och är utanför nuvarande design.
+
+### Deploy
+
+- Deploy sker manuellt med `npm run deploy` (`gh-pages`-paketet) från en miljö där
+  `.env` är ifylld — bygget tar miljövariablerna från `.env`. Ingen CI/CD-pipeline
+  ingår i nuvarande omfattning.
 
 ### Inloggningsflöde
 
@@ -78,7 +93,8 @@ minska skrivkonflikter.
 ### Person-flöde ("vem är jag?")
 
 1. Efter inloggning: läs `personId` från `localStorage`.
-2. Saknas → visa "Välj dig"-vy:
+2. Saknas **eller pekar på ett id som inte längre finns i `registry.json`** (t.ex.
+   personen har tagits bort) → visa "Välj dig"-vy:
    - **Skapa ny:** skriv ditt namn → ny person skapas i `registry.json`
      (utan grupp → hamnar i "Ogrupperade").
    - **Välj befintlig:** välj från lista över redan skapade personer.
@@ -102,14 +118,18 @@ minska skrivkonflikter.
 - **Semesterdag:** ifylld cell.
 - **Helg (lördag/söndag):** egen bakgrundsfärg på hela kolumnen, oavsett semester.
 - Horisontell scroll när antalet kolumner överstiger skärmbredden.
+- **Block utanför fönstret:** en semester kan börja före och/eller sluta efter det
+  visade månadsintervallet. Blocket **klipps visuellt** vid fönstrets kant, men klick
+  på den synliga delen öppnar **hela** semesterposten för redigering/borttagning.
 
 ### Tidsregler
 
 - **Veckor börjar måndag** (ISO 8601). Veckonummer beräknas enligt ISO-standard
   (vecka 1 = veckan som innehåller årets första torsdag).
 - Visningsintervall anges som **från-månad** och **till-månad**, alltid hela månader.
-- **Max 3 månaders spann.** Till-månadsväljaren begränsas så att intervallet aldrig
-  överstiger 3 månader.
+- **Max 3 månaders spann.** Begränsningen är **dynamisk åt båda håll**: när från-månaden
+  ändras justeras till-månadsväljarens tillåtna intervall reaktivt (och vice versa), så
+  att spannet aldrig kan överstiga 3 månader oavsett i vilken ordning väljarna ändras.
 
 ### Filtrering
 
@@ -138,6 +158,9 @@ minska skrivkonflikter.
 - Skrivs till `registry.json`.
 - **Ta bort person med registrerad semester:** appen varnar och tar bort både
   personen och dess semestrar vid bekräftelse.
+- **Ta bort grupp:** alla personer i gruppen får sitt `groupId` **nullat** (inte
+  raderade) och hamnar därmed i "Ogrupperade" via den vanliga fallbacken. Personernas
+  semestrar påverkas inte.
 
 ## 7. GitHub API-lager
 
@@ -157,8 +180,18 @@ skrivningar får den andra `409 Conflict`.
 1. Hämta aktuell fil + `sha`.
 2. Applicera ändringen på datat.
 3. PUT med `sha`.
-4. Vid `409`: hämta om fil + `sha`, slå ihop ändringen på nytt, försök igen.
+4. Vid `409`: hämta om fil + `sha`, applicera om ändringen på det färska datat,
+   försök igen.
 5. Max ~3 försök, sedan visa felmeddelande.
+
+**Merge-strategi — last-write-wins per post.** Vid omförsök appliceras den lokala
+ändringen på det nyhämtade datat på **post-nivå** (per `id`):
+
+- **Lägga till/ta bort** en post: operationen replayas mot det färska datat (lägg till
+  posten / filtrera bort id:t).
+- **Redigera samma post som någon annan hann ändra:** den egna skrivningen vinner
+  (skriver över). Detta är ett accepterat och medvetet enkelt beteende — ingen
+  fältnivå-merge eller konfliktdialog byggs.
 
 ## 8. Felhantering
 
@@ -174,8 +207,12 @@ skrivningar får den andra `409 Conflict`.
 
 - ISO-veckonummer-beräkning (kantfall kring årsskiften är kritiska).
 - Kalenderkolumn-generering från månadsintervall (måndag-start, helg-flaggor).
-- Intervallvalidering (≥ en dag, max 3 månader).
-- Gruppering av personer inkl. syntetisk "Ogrupperade".
+- **Semesterintervall-validering:** `end >= start` (minst en dag). *Ingen* max-gräns
+  på en enskild semester.
+- **Visningsspann-begränsning:** från/till-månad ger aldrig mer än 3 månader, och
+  begränsningen är dynamisk åt båda håll. (Separat regel — gäller vyn, inte semestrar.)
+- Gruppering av personer inkl. syntetisk "Ogrupperade" (inkl. personer vars `groupId`
+  nullats efter grupborttagning).
 
 **Komponenttester** hålls lätta — fokus på logiken ovan, inte pixel-perfekt rendering.
 

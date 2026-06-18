@@ -25,3 +25,14 @@ cp .env.example .env   # fyll i värden
 npm install
 npm run dev
 ```
+
+## Deploy
+
+Deploy sker manuellt till GitHub Pages med `gh-pages`-paketet från en miljö där
+`.env` är ifylld (miljövariablerna bäddas in i bygget):
+
+```bash
+npm run deploy
+```
+
+Ingen CI/CD-pipeline ingår. PAT-scope `public_repo` räcker så länge repot är publikt.
