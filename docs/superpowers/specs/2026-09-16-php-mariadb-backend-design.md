@@ -159,11 +159,27 @@ träffa någon annans konto.
 
 `PUT` och `DELETE` på `/api/persons/{id}` avvisas med `422` om operationen skulle
 lämna systemet utan någon administratör — alltså om den sista administratören
-försöker ta bort sin adminflagga eller radera sitt eget konto. Kontrollen görs i
-samma transaktion som skrivningen, så två samtidiga degraderingar inte kan ta ut
-varandra.
+försöker ta bort sin adminflagga eller radera sitt eget konto.
 
-Utan den kontrollen är enda vägen tillbaka att köra `create-admin.php` på NAS:en,
+**Kontrollen kräver radlås, inte bara en transaktion.** MariaDB kör
+`REPEATABLE READ` som standard, så två samtidiga degraderingar i var sin
+transaktion läser båda samma snapshot, ser båda att det finns två
+administratörer, och lyckas båda. Resultatet är noll administratörer. Räkningen
+måste därför föregås av ett lås:
+
+```sql
+SELECT id FROM users WHERE is_admin = 1 FOR UPDATE
+```
+
+Transaktionerna serialiseras då på de låsta raderna, och den andra ser det
+uppdaterade läget. Låset, kontrollen och skrivningen ligger i samma transaktion.
+
+`users` saknar index på `is_admin`, så `FOR UPDATE` blir en full tabellskanning
+som låser samtliga rader. Vid några dussin konton och en transaktion som lever
+under en millisekund är det ofarligt, och ett index på en kolumn med två möjliga
+värden skulle ändå sällan användas. Noterat här så att valet är medvetet.
+
+Utan kontrollen är enda vägen tillbaka att köra `create-admin.php` på NAS:en,
 vilket kräver SSH-åtkomst som inte alla har.
 
 ### Sessionen
@@ -191,6 +207,12 @@ vilket kräver SSH-åtkomst som inte alla har.
   `X-Forwarded-For`, annars `REMOTE_ADDR`. Är listan tom räknas enbart per
   e-postadress. `X-Forwarded-For` får aldrig läsas från en avsändare som inte
   står i listan — headern är klientstyrd och annars trivial att förfalska.
+- **Priset för enbart per-e-post-spärr** är att vem som helst kan låsa ute en
+  känd adress i femton minuter med fem felaktiga försök. Det är en accepterad
+  avvägning för ett internt verktyg med ett tiotal konton: alternativet, att
+  spärra på en IP-adress som i praktiken är proxyns, låser ute alla samtidigt.
+  Spärren släpper av sig själv och administratören kan inte hjälpa till att häva
+  den — det finns ingen endpoint för det, och behövs inte vid den här skalan.
 - **Svaret är identiskt** för okänd e-post och fel lösenord. Annars blir
   endpointen en kontolista.
 - **Gallring.** `login_attempts` växer obegränsat annars. Rader äldre än ett dygn
@@ -218,7 +240,7 @@ session.
 | `PUT` | `/api/vacations/{id}` | ägare eller admin | Ändrar datumintervall |
 | `DELETE` | `/api/vacations/{id}` | ägare eller admin | Tar bort rad |
 | `POST` | `/api/persons` | admin | Skapar konto: namn, e-post, lösenord, grupp, adminflagga |
-| `PUT` | `/api/persons/{id}` | admin | Namn, e-post, grupp, adminflagga, nytt lösenord |
+| `PUT` | `/api/persons/{id}` | admin | Delvis uppdatering: namn, e-post, grupp, adminflagga, nytt lösenord |
 | `DELETE` | `/api/persons/{id}` | admin | Tar bort konto och dess semester |
 | `POST` | `/api/groups` | admin | Skapar grupp |
 | `PUT` | `/api/groups/{id}` | admin | Byter namn |
@@ -251,6 +273,28 @@ inte förekommer någon annanstans.
 
 `end` är ett reserverat ord i MariaDB och `start` ligger nära. **Båda aliasen
 måste backtickas**, annars faller frågan på ett syntaxfel som är svårläst.
+
+### `PUT /api/persons/{id}` är partiell
+
+Storen anropar `setPersonGroup(id, groupId)` och skickar bara det fältet. Samma
+sak gäller när AdminPanel byter namn eller sätter ett nytt lösenord.
+
+**Beslut: endpointen accepterar en delvis ifylld body.** En nyckel som saknas
+lämnas oförändrad; storen skickar aldrig hela objektet. Alternativet — att låta
+storen läsa ihop och skicka samtliga fält — skulle innebära att varje
+gruppbyte också skriver över namn, e-post och adminflagga med den kopia klienten
+råkar ha, vilket gör varje fältändring till en potentiell överskrivning av någon
+annans samtidiga ändring.
+
+**`groupId: null` betyder "ta bort ur gruppen", medan en utelämnad `groupId`
+betyder "rör inte".** Skillnaden avgörs med `array_key_exists()`, inte med
+`isset()` — `isset()` returnerar `false` för `null` och skulle tyst svälja varje
+försök att göra en person ogrupperad. Samma sak gäller `filter_input` och
+`??`-operatorn; ingen av dem kan se skillnad på frånvarande och null.
+
+Att `PUT` har partiell semantik i stället för `PATCH` är en medveten
+förenkling. Resursen har en konsument, och en andra HTTP-metod i routingtabellen
+för ett enda endpoint bär inte sin egen vikt.
 
 ### `GET /api/bootstrap`
 
@@ -347,6 +391,11 @@ WHERE id = ? AND (user_id = ? OR ? = 1)
 `rowCount()` efter en `UPDATE` antalet *ändrade* rader, inte antalet *matchade*.
 En `PUT` med oförändrade datum skulle då ge noll rader och tolkas som ett fel,
 trots att anropet var både giltigt och tillåtet.
+
+Flaggan **måste ligga i options-arrayen till `new PDO(...)`**. Ett
+`setAttribute()` efter att anslutningen öppnats ignoreras tyst — inget
+undantag, ingen varning, och beteendet är oförändrat. Det är samma symptom som
+om flaggan aldrig satts, vilket gör felet svårt att se vid en kodgranskning.
 
 ## 7. Projektstruktur
 
@@ -513,6 +562,14 @@ riktig session:
    förutsätter att vakten inte stängt sessionen för `/api/session`.
 9. **Överlappsfiltret** — en semester som börjar före `from` och slutar inuti
    intervallet kommer med i `/api/bootstrap`.
+10. **Partiell uppdatering** — en `PUT` med enbart `groupId` lämnar namn, e-post
+    och adminflagga orörda; `groupId: null` gör personen ogrupperad, medan en
+    utelämnad `groupId` inte ändrar gruppen. Testet faller om implementationen
+    använder `isset()` i stället för `array_key_exists()`.
+
+Därutöver ett test på att `SELECT ... FOR UPDATE` faktiskt håller: två
+transaktioner som degraderar var sin av två administratörer körs överlappande,
+och den andra ska få `422` i stället för att lämna systemet utan administratör.
 
 ### Arbetsordning
 
