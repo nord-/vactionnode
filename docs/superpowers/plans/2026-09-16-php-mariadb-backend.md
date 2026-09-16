@@ -15,6 +15,8 @@
 - **Gren:** allt arbete sker på `feature/php-mariadb-backend`. Aldrig commit direkt på `main`.
 - **PHP 8.2**, **MariaDB 10.11.11** (exakt pinnad image), **Apache 2.4**.
 - **Inga körtidsberoenden.** Composer används enbart för PHPUnit; `vendor/` deployas aldrig.
+- **Värden har varken `php` eller `composer` — bara Docker.** Allt PHP körs med `docker compose -f docker/docker-compose.yml exec -T php …`. Ett `composer`- eller `php`-kommando direkt i terminalen kommer inte att fungera.
+- **Aldrig `exit` i PHP-koden.** Vakter och valideringar kastar `App\HttpException`, som `Router::dispatch()` gör om till JSON. Ett `exit` dödar PHPUnit-processen mitt i sviten.
 - **Radslut CRLF, indentering med mellanslag** (se `.gitattributes`).
 - **Svenska i UI-text och kodkommentarer.** Commit-meddelanden på engelska.
 - **Conventional commits** (`feat:`, `fix:`, `test:`, `chore:`, `docs:`).
@@ -74,8 +76,12 @@
 ### Task 1: Dev-miljö, schema och testriggen
 
 **Files:**
-- Create: `docker/docker-compose.yml`, `docker/Dockerfile`, `db/schema.sql`, `config.php.example`, `composer.json`, `phpunit.xml`, `tests-php/bootstrap.php`, `tests-php/DbTestCase.php`, `tests-php/SchemaTest.php`
-- Modify: `.gitignore`
+- Create: `docker/docker-compose.yml`, `docker/Dockerfile`, `docker/vhost.conf`, `db/schema.sql`, `db/reset-test-db.sh`, `config.php.example`, `config.php`, `composer.json`, `phpunit.xml`, `tests-php/bootstrap.php`, `tests-php/DbTestCase.php`, `tests-php/SchemaTest.php`
+- Modify: `.gitignore`, `.gitattributes`
+
+**Värdmiljön har varken `php` eller `composer` — bara Docker.** Varje
+PHP-kommando i planen körs därför inuti `php`-containern. Skriv aldrig
+`composer test` rakt av; det finns inget att köra det med.
 
 **Interfaces:**
 - Consumes: ingenting.
@@ -87,12 +93,18 @@
 
 ```dockerfile
 FROM php:8.2-apache
+
+# Composer finns inte på värden, så den bor i imagen. vendor/ hamnar i
+# den monterade repo-roten och deployas aldrig till NAS:en.
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
 RUN docker-php-ext-install pdo_mysql \
  && docker-php-ext-enable opcache \
  && a2enmod rewrite
 RUN printf 'opcache.enable=1\nopcache.validate_timestamps=1\n' \
       > /usr/local/etc/php/conf.d/opcache.ini
 COPY docker/vhost.conf /etc/apache2/sites-available/000-default.conf
+WORKDIR /var/www/html
 ```
 
 `docker/vhost.conf`:
@@ -117,11 +129,14 @@ services:
       dockerfile: docker/Dockerfile
     ports:
       - "8080:80"
+    # Hela repo-roten monteras, inte enskilda kataloger. Det ger samma
+    # relativa sökvägar som på NAS:en, och undviker Dockers klassiska fälla:
+    # en bind-mount av en fil som inte finns skapar en KATALOG med det namnet.
     volumes:
-      - ../public:/var/www/html/public
-      - ../app:/var/www/html/app
-      - ../db:/var/www/html/db
-      - ../config.php:/var/www/html/config.php
+      - ..:/var/www/html
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
     depends_on:
       - db
   db:
@@ -129,6 +144,7 @@ services:
     environment:
       MARIADB_ROOT_PASSWORD: root
       MARIADB_DATABASE: vacation
+    # 3307 utåt speglar NAS:en; inuti compose-nätet är porten 3306.
     ports:
       - "3307:3306"
     volumes:
@@ -202,10 +218,45 @@ return [
     // Tomma listan stänger av per-IP-spärren. Fyll i reverse-proxyns
     // adress för att aktivera den — se spec §4.
     'trusted_proxies' => [],
+
+    // Sessionscookiens Secure-flagga. ALLTID true i produktion. Sätts till
+    // false enbart i den lokala Docker-miljön, som kör ren HTTP — annars
+    // sätter browsern aldrig cookien och inget flöde går att testa.
+    // $_SERVER['HTTPS'] duger inte som automatik: den är tom bakom DSM:s
+    // reverse proxy, vilket hade stängt av Secure i produktion.
+    'cookie_secure' => true,
+];
+```
+
+Skapa dessutom `config.php` för utvecklingsmiljön — den är gitignorerad, men
+**måste finnas innan `docker compose up`**:
+
+```php
+<?php
+return [
+    'db' => [
+        'host' => getenv('DB_HOST') ?: 'db',
+        'port' => (int) (getenv('DB_PORT') ?: 3306),
+        'name' => 'vacation',
+        'user' => 'root',
+        'pass' => 'root',
+    ],
+    'trusted_proxies' => [],
+    'cookie_secure'   => false,
 ];
 ```
 
 Lägg till i `.gitignore`: `config.php`, `vendor/`, `dist/`, `.env`.
+
+Lägg till i `.gitattributes`, **efter** den befintliga `* text=auto eol=crlf`-raden
+så att den mer specifika regeln vinner:
+
+```gitattributes
+*.sh text eol=lf
+```
+
+Utan den raden får `scripts/deploy.sh` och `db/reset-test-db.sh` CRLF, och bash
+svarar `bad interpreter: /usr/bin/env bash^M`.
 
 - [ ] **Step 4: Composer och PHPUnit**
 
@@ -257,8 +308,13 @@ abstract class DbTestCase extends TestCase
 
     protected function setUp(): void
     {
+        // Testerna körs inuti php-containern, där databasen heter db:3306.
+        // Miljövariablerna gör det möjligt att peka om utan kodändring.
+        $host = getenv('DB_HOST') ?: 'db';
+        $port = getenv('DB_PORT') ?: '3306';
+
         $this->pdo = new PDO(
-            'mysql:host=127.0.0.1;port=3307;dbname=vacation_test;charset=utf8mb4',
+            "mysql:host={$host};port={$port};dbname=vacation_test;charset=utf8mb4",
             'root',
             'root',
             [
@@ -329,31 +385,44 @@ final class SchemaTest extends DbTestCase
 }
 ```
 
-- [ ] **Step 7: Kör testet och se att det failar**
-
-Kör: `docker compose -f docker/docker-compose.yml up -d db` följt av `composer test`
-Förväntat: FAIL — `vacation_test` finns inte och tabellerna saknas.
-
-- [ ] **Step 8: Skapa testdatabasen och applicera schemat**
+- [ ] **Step 7: Starta miljön och installera PHPUnit**
 
 ```bash
-docker compose -f docker/docker-compose.yml exec -T db \
-  mariadb -uroot -proot -e "CREATE DATABASE IF NOT EXISTS vacation_test"
-docker compose -f docker/docker-compose.yml exec -T db \
-  mariadb -uroot -proot vacation_test < db/schema.sql
+docker compose -f docker/docker-compose.yml up -d --build
+docker compose -f docker/docker-compose.yml exec -T php composer install
 ```
 
-Lägg kommandona i `db/reset-test-db.sh` så de går att upprepa.
+- [ ] **Step 8: Kör testet och se att det failar**
 
-- [ ] **Step 9: Kör testet igen**
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test`
+Förväntat: FAIL — `vacation_test` finns inte och tabellerna saknas.
 
-Kör: `composer test`
-Förväntat: PASS — tre gröna tester.
+- [ ] **Step 9: Skapa testdatabasen och applicera schemat**
 
-- [ ] **Step 10: Commit**
+`db/reset-test-db.sh` (LF-radslut, se `.gitattributes` i steg 3):
 
 ```bash
-git add docker db config.php.example composer.json composer.lock phpunit.xml tests-php .gitignore
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+DC="docker compose -f docker/docker-compose.yml"
+
+$DC exec -T db mariadb -uroot -proot \
+  -e "DROP DATABASE IF EXISTS vacation_test; CREATE DATABASE vacation_test"
+$DC exec -T db mariadb -uroot -proot vacation_test < db/schema.sql
+```
+
+Kör: `bash db/reset-test-db.sh`
+
+- [ ] **Step 10: Kör testet igen**
+
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test`
+Förväntat: PASS — tre gröna tester.
+
+- [ ] **Step 11: Commit**
+
+```bash
+git add docker db config.php.example composer.json composer.lock phpunit.xml tests-php .gitignore .gitattributes
 git commit -m "chore: add Docker development environment, database schema and PHPUnit harness"
 ```
 
@@ -362,7 +431,7 @@ git commit -m "chore: add Docker development environment, database schema and PH
 ### Task 2: Db, Uuid och Http
 
 **Files:**
-- Create: `app/Db.php`, `app/Uuid.php`, `app/Http.php`, `tests-php/DbTest.php`
+- Create: `app/Db.php`, `app/Uuid.php`, `app/Http.php`, `app/HttpException.php`, `tests-php/DbTest.php`
 - Test: `tests-php/DbTest.php`
 
 **Interfaces:**
@@ -373,6 +442,7 @@ git commit -m "chore: add Docker development environment, database schema and PH
   - `App\Http::json(mixed $data, int $status = 200): void`
   - `App\Http::error(string $code, string $message, int $status): void`
   - `App\Http::body(): array`
+  - `App\HttpException(string $code, string $message, int $status)` — kastas i stället för `exit`
 
 - [ ] **Step 1: Skriv det failande testet**
 
@@ -393,16 +463,21 @@ final class DbTest extends DbTestCase
             'host' => '127.0.0.1', 'port' => 3307, 'name' => 'vacation_test',
             'user' => 'root', 'pass' => 'root',
         ]);
+        // Egen anslutning, alltså utanför testets transaktion. Städningen
+        // måste därför ske i finally, annars blir raden kvar och nästa körning
+        // faller på UNIQUE(email).
         $pdo->exec("INSERT INTO users (id, name, email, password_hash)
                     VALUES ('fr1', 'Anna', 'fr1@example.com', 'x')");
 
-        // Samma värde som redan står där: noll ändrade rader, en matchad.
-        $stmt = $pdo->prepare('UPDATE users SET name = ? WHERE id = ?');
-        $stmt->execute(['Anna', 'fr1']);
+        try {
+            // Samma värde som redan står där: noll ändrade rader, en matchad.
+            $stmt = $pdo->prepare('UPDATE users SET name = ? WHERE id = ?');
+            $stmt->execute(['Anna', 'fr1']);
 
-        $this->assertSame(1, $stmt->rowCount());
-
-        $pdo->exec("DELETE FROM users WHERE id = 'fr1'");
+            $this->assertSame(1, $stmt->rowCount());
+        } finally {
+            $pdo->exec("DELETE FROM users WHERE id = 'fr1'");
+        }
     }
 
     public function testUuidV4HasCorrectShape(): void
@@ -417,7 +492,7 @@ final class DbTest extends DbTestCase
 
 - [ ] **Step 2: Kör testet och se att det failar**
 
-Kör: `composer test -- --filter DbTest`
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test -- --filter DbTest`
 Förväntat: FAIL med `Class "App\Db" not found`.
 
 - [ ] **Step 3: Implementera Db och Uuid**
@@ -481,6 +556,7 @@ namespace App;
 
 final class Http
 {
+    // use App\HttpException; behövs inte — samma namnrymd.
     public static function json(mixed $data, int $status = 200): void
     {
         http_response_code($status);
@@ -502,8 +578,10 @@ final class Http
     {
         $type = $_SERVER['CONTENT_TYPE'] ?? '';
         if (!str_starts_with($type, 'application/json')) {
-            self::error('unsupported_media_type', 'Kräver application/json.', 415);
-            exit;
+            // Kastar, aldrig exit: front controllern körs i samma process som
+            // PHPUnit, och ett exit hade dödat hela testsviten vid första
+            // felsvaret i stället för att låta testet göra sin assertion.
+            throw new HttpException('unsupported_media_type', 'Kräver application/json.', 415);
         }
 
         $decoded = json_decode(file_get_contents('php://input') ?: '', true);
@@ -513,15 +591,45 @@ final class Http
 }
 ```
 
-- [ ] **Step 5: Kör testet och se att det passerar**
+- [ ] **Step 5: Implementera HttpException**
 
-Kör: `composer test -- --filter DbTest`
+`app/HttpException.php`:
+
+```php
+<?php
+namespace App;
+
+use RuntimeException;
+
+/**
+ * Avbryter en request med en given statuskod. Router::dispatch() fångar den
+ * och gör den till ett JSON-felsvar.
+ *
+ * Varför ett undantag och inte exit: ApiTestCase kör routern i samma process
+ * som PHPUnit. Ett exit i en vakt eller en validering hade avslutat hela
+ * testsviten vid första 403:an, utan rapport och utan resterande tester.
+ */
+final class HttpException extends RuntimeException
+{
+    public function __construct(
+        public readonly string $code,
+        string $message,
+        public readonly int $status
+    ) {
+        parent::__construct($message);
+    }
+}
+```
+
+- [ ] **Step 6: Kör testet och se att det passerar**
+
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test -- --filter DbTest`
 Förväntat: PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add app/Db.php app/Uuid.php app/Http.php tests-php/DbTest.php
+git add app/Db.php app/Uuid.php app/Http.php app/HttpException.php tests-php/DbTest.php
 git commit -m "feat: add PDO connection, UUID generation and JSON response helpers"
 ```
 
@@ -536,9 +644,9 @@ git commit -m "feat: add PDO connection, UUID generation and JSON response helpe
 **Interfaces:**
 - Consumes: `App\Db`, `App\Http` från Task 2.
 - Produces:
-  - `App\Auth::start(): void`
+  - `App\Auth::start(array $config): void`
   - `App\Auth::currentUser(PDO $pdo): ?array` — `['id','name','email','groupId','isAdmin']` eller `null`
-  - `App\Auth::requireOwner(PDO $pdo, string $vacationId, array $user): void` — svarar `404`/`403` och avslutar vid miss
+  - `App\Auth::requireOwner(PDO $pdo, string $vacationId, array $user): void` — kastar `HttpException` med `404`/`403` vid miss
   - `App\Router::routes(): array` — lista av `['method','pattern','class','action','access','keepSession']`
   - `App\Router::dispatch(PDO $pdo, string $method, string $path): void`
   - `Tests\ApiTestCase::request(string $method, string $path, ?array $body = null, ?string $asUserId = null): array` — returnerar `['status' => int, 'json' => array]`
@@ -608,11 +716,21 @@ abstract class ApiTestCase extends DbTestCase
         $_SESSION = $asUserId === null ? [] : ['user_id' => $asUserId];
         $_SERVER['CONTENT_TYPE'] = 'application/json';
         $_SERVER['REQUEST_METHOD'] = $method;
+        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+
+        // Routingmönstren är ankrade med $, så en query-sträng i sökvägen
+        // matchar aldrig. Den måste bort ur sökvägen och in i $_GET, precis
+        // som front controllern gör med parse_url().
+        $parts = parse_url($path);
+        $_GET = [];
+        if (isset($parts['query'])) {
+            parse_str($parts['query'], $_GET);
+        }
 
         Http::setTestBody($body === null ? '' : json_encode($body));
 
         ob_start();
-        Router::dispatch($this->pdo, $method, $path);
+        Router::dispatch($this->pdo, $method, $parts['path']);
         $out = ob_get_clean();
 
         return [
@@ -646,7 +764,7 @@ till att läsa `self::$testBody ?? file_get_contents('php://input')`.
 
 - [ ] **Step 3: Kör testet och se att det failar**
 
-Kör: `composer test -- --filter RouterTest`
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test -- --filter RouterTest`
 Förväntat: FAIL med `Class "App\Router" not found`.
 
 - [ ] **Step 4: Implementera vakten**
@@ -661,15 +779,18 @@ use PDO;
 
 final class Auth
 {
-    public static function start(): void
+    public static function start(array $config): void
     {
         if (PHP_SAPI === 'cli' || session_status() === PHP_SESSION_ACTIVE) {
             return;
         }
 
+        // Secure läses ur config, aldrig ur $_SERVER['HTTPS'] — den är tom
+        // bakom DSM:s reverse proxy och hade stängt av flaggan i produktion.
+        // Default är true; bara dev-config.php sätter false.
         session_set_cookie_params([
             'httponly' => true,
-            'secure'   => true,
+            'secure'   => $config['cookie_secure'] ?? true,
             'samesite' => 'Strict',
             'path'     => '/',
         ]);
@@ -711,12 +832,10 @@ final class Auth
         $ownerId = $stmt->fetchColumn();
 
         if ($ownerId === false) {
-            Http::error('not_found', 'Semesterraden finns inte.', 404);
-            exit;
+            throw new HttpException('not_found', 'Semesterraden finns inte.', 404);
         }
         if ($ownerId !== $user['id'] && !$user['isAdmin']) {
-            Http::error('forbidden', 'Du får bara ändra din egen semester.', 403);
-            exit;
+            throw new HttpException('forbidden', 'Du får bara ändra din egen semester.', 403);
         }
     }
 }
@@ -766,24 +885,30 @@ final class Router
                 continue;
             }
 
-            $user = Auth::currentUser($pdo);
+            // Ett enda try runt hela dispatchen. Vakter och valideringar kastar
+            // HttpException i stället för att anropa exit, så att routern kan
+            // omvandla dem till JSON — och så att PHPUnit överlever ett 403-svar.
+            try {
+                $user = Auth::currentUser($pdo);
 
-            if ($access !== 'public' && $user === null) {
-                Http::error('unauthenticated', 'Du måste logga in.', 401);
-                return;
-            }
-            if (!$keepSession && PHP_SAPI !== 'cli') {
-                session_write_close();
-            }
-            if ($access === 'admin' && !$user['isAdmin']) {
-                Http::error('forbidden', 'Kräver administratör.', 403);
-                return;
-            }
-            if ($access === 'owner') {
-                Auth::requireOwner($pdo, $matches[1], $user);
+                if ($access !== 'public' && $user === null) {
+                    throw new HttpException('unauthenticated', 'Du måste logga in.', 401);
+                }
+                if (!$keepSession && PHP_SAPI !== 'cli') {
+                    session_write_close();
+                }
+                if ($access === 'admin' && !$user['isAdmin']) {
+                    throw new HttpException('forbidden', 'Kräver administratör.', 403);
+                }
+                if ($access === 'owner') {
+                    Auth::requireOwner($pdo, $matches[1], $user);
+                }
+
+                (new $class($pdo))->$action($user, $matches[1] ?? null);
+            } catch (HttpException $e) {
+                Http::error($e->code, $e->getMessage(), $e->status);
             }
 
-            (new $class($pdo))->$action($user, $matches[1] ?? null);
             return;
         }
 
@@ -815,7 +940,7 @@ spl_autoload_register(static function (string $class): void {
 
 $config = require dirname(__DIR__, 2) . '/config.php';
 
-App\Auth::start();
+App\Auth::start($config);
 
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 
@@ -865,7 +990,7 @@ Upprepa mönstret för varje metod som `Router::routes()` refererar: `me`, `logo
 
 - [ ] **Step 8: Kör testet och se att det passerar**
 
-Kör: `composer test -- --filter RouterTest`
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test -- --filter RouterTest`
 Förväntat: PASS — tre gröna tester.
 
 - [ ] **Step 9: Verifiera AllowOverride i Docker**
@@ -1012,7 +1137,7 @@ final class SessionTest extends ApiTestCase
 
 - [ ] **Step 2: Kör testerna och se att de failar**
 
-Kör: `composer test -- --filter SessionTest`
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test -- --filter SessionTest`
 Förväntat: FAIL — `501 not_implemented` från stubben.
 
 - [ ] **Step 3: Implementera rate limiting**
@@ -1135,7 +1260,11 @@ final class SessionHandler
             return;
         }
 
-        session_regenerate_id(true);
+        // Guardad som logout: i CLI (PHPUnit) finns ingen aktiv session, och
+        // session_regenerate_id() ger då en PHP-varning som gör testet rött.
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+        }
         $_SESSION['user_id'] = $row['id'];
 
         unset($row['password_hash']);
@@ -1187,7 +1316,7 @@ final class SessionHandler
 
 - [ ] **Step 5: Kör testerna och se att de passerar**
 
-Kör: `composer test -- --filter SessionTest`
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test -- --filter SessionTest`
 Förväntat: PASS — sju gröna tester.
 
 - [ ] **Step 6: Commit**
@@ -1274,7 +1403,7 @@ final class BootstrapTest extends ApiTestCase
 
 - [ ] **Step 2: Kör testerna och se att de failar**
 
-Kör: `composer test -- --filter BootstrapTest`
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test -- --filter BootstrapTest`
 Förväntat: FAIL — `501`.
 
 - [ ] **Step 3: Implementera handlern**
@@ -1334,7 +1463,7 @@ final class BootstrapHandler
 
 - [ ] **Step 4: Kör testerna och se att de passerar**
 
-Kör: `composer test -- --filter BootstrapTest`
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test -- --filter BootstrapTest`
 Förväntat: PASS.
 
 - [ ] **Step 5: Commit**
@@ -1494,7 +1623,7 @@ final class GuardMatrixTest extends ApiTestCase
 
 - [ ] **Step 2: Kör testerna och se att de failar**
 
-Kör: `composer test -- --filter "VacationTest|GuardMatrixTest"`
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test -- --filter "VacationTest|GuardMatrixTest"`
 Förväntat: FAIL — `501` för semesterraderna; matrisen failar på allt utom `401`.
 
 - [ ] **Step 3: Implementera handlern**
@@ -1586,7 +1715,7 @@ final class VacationHandler
 
 - [ ] **Step 4: Kör testerna och se att de passerar**
 
-Kör: `composer test -- --filter "VacationTest|GuardMatrixTest"`
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test -- --filter "VacationTest|GuardMatrixTest"`
 Förväntat: PASS. Matrisens `persons`- och `groups`-rader passerar redan här eftersom vakten svarar `403` före stubben.
 
 - [ ] **Step 5: Commit**
@@ -1735,7 +1864,7 @@ final class PersonTest extends ApiTestCase
 
 - [ ] **Step 2: Kör testerna och se att de failar**
 
-Kör: `composer test -- --filter PersonTest`
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test -- --filter PersonTest`
 Förväntat: FAIL — `501`.
 
 - [ ] **Step 3: Implementera den delade kontologiken**
@@ -1808,12 +1937,40 @@ final class Persons
 namespace App\Handlers;
 
 use App\Http;
+use App\HttpException;
 use App\Persons;
 use PDO;
 
 final class PersonHandler
 {
     public function __construct(private PDO $pdo) {}
+
+    /**
+     * MariaDB har inga nästlade transaktioner, och DbTestCase håller redan en
+     * öppen. Äger vi inte transaktionen rör vi varken begin, commit eller
+     * rollBack — en rollBack här hade rullat tillbaka testets egen uppsättning
+     * och fått orelaterade tester att falla.
+     */
+    private function transactional(callable $fn): mixed
+    {
+        $owned = !$this->pdo->inTransaction();
+        if ($owned) {
+            $this->pdo->beginTransaction();
+        }
+
+        try {
+            $result = $fn();
+            if ($owned) {
+                $this->pdo->commit();
+            }
+            return $result;
+        } catch (\Throwable $e) {
+            if ($owned) {
+                $this->pdo->rollBack();
+            }
+            throw $e;
+        }
+    }
 
     public function create(?array $user, ?string $id = null): void
     {
@@ -1846,16 +2003,13 @@ final class PersonHandler
     {
         $body = Http::body();
 
-        $this->pdo->beginTransaction();
-
+        $this->transactional(function () use ($body, $id): void {
         // array_key_exists, inte isset: isset() är false för null och skulle
         // tyst svälja varje försök att göra en person ogrupperad.
         $demoting = array_key_exists('isAdmin', $body) && !$body['isAdmin'];
         if ($demoting && Persons::wouldLeaveNoAdmin($this->pdo, $id)) {
-            $this->pdo->rollBack();
-            Http::error('validation_failed',
+            throw new HttpException('validation_failed',
                 'Det måste finnas minst en administratör.', 422);
-            return;
         }
 
         $columns = [
@@ -1891,8 +2045,7 @@ final class PersonHandler
             );
             $stmt->execute($params);
         }
-
-        $this->pdo->commit();
+        });
 
         $stmt = $this->pdo->prepare(
             'SELECT id, name, email, team_id AS groupId, is_admin AS isAdmin
@@ -1902,8 +2055,7 @@ final class PersonHandler
         $row = $stmt->fetch();
 
         if ($row === false) {
-            Http::error('not_found', 'Personen finns inte.', 404);
-            return;
+            throw new HttpException('not_found', 'Personen finns inte.', 404);
         }
 
         $row['isAdmin'] = (bool) $row['isAdmin'];
@@ -1912,30 +2064,20 @@ final class PersonHandler
 
     public function destroy(?array $user, ?string $id = null): void
     {
-        $this->pdo->beginTransaction();
+        $this->transactional(function () use ($id): void {
+            if (Persons::wouldLeaveNoAdmin($this->pdo, $id)) {
+                throw new HttpException('validation_failed',
+                    'Det måste finnas minst en administratör.', 422);
+            }
 
-        if (Persons::wouldLeaveNoAdmin($this->pdo, $id)) {
-            $this->pdo->rollBack();
-            Http::error('validation_failed',
-                'Det måste finnas minst en administratör.', 422);
-            return;
-        }
-
-        $stmt = $this->pdo->prepare('DELETE FROM users WHERE id = ?');
-        $stmt->execute([$id]);
-
-        $this->pdo->commit();
+            $stmt = $this->pdo->prepare('DELETE FROM users WHERE id = ?');
+            $stmt->execute([$id]);
+        });
 
         Http::json(['ok' => true]);
     }
 }
 ```
-
-**Not för implementeraren:** `DbTestCase` håller redan en transaktion öppen, och
-MariaDB stödjer inte nästlade transaktioner. Lägg därför till en hjälpmetod i
-`PersonHandler` som hoppar över `beginTransaction()`/`commit()` när
-`$this->pdo->inTransaction()` redan är `true`, och anropa den i stället för PDO
-direkt. `FOR UPDATE` fungerar oförändrat inuti den yttre transaktionen.
 
 - [ ] **Step 5: Skriv samtidighetstestet för FOR UPDATE**
 
@@ -1974,39 +2116,42 @@ final class LastAdminConcurrencyTest extends TestCase
         $b = Db::connect(self::DSN);
         $b->exec('SET SESSION innodb_lock_wait_timeout = 2');
 
-        $a->beginTransaction();
-        $b->beginTransaction();
-
-        // A tar låset och degraderar conc1. Nu finns bara conc2 kvar som admin.
-        $this->assertFalse(Persons::wouldLeaveNoAdmin($a, 'conc1'));
-        $a->exec("UPDATE users SET is_admin = 0 WHERE id = 'conc1'");
-
-        // B försöker samtidigt degradera conc2. Utan FOR UPDATE skulle B läsa
-        // det gamla snapshotet, se två administratörer och lyckas — resultatet
-        // hade blivit noll administratörer.
-        $blocked = false;
         try {
-            Persons::wouldLeaveNoAdmin($b, 'conc2');
-        } catch (PDOException) {
-            $blocked = true; // lock wait timeout: låset höll
+            $a->beginTransaction();
+            $b->beginTransaction();
+
+            // A tar låset och degraderar conc1. Transaktionen hålls öppen, så
+            // låset på adminraderna släpps inte.
+            $this->assertFalse(Persons::wouldLeaveNoAdmin($a, 'conc1'));
+            $a->exec("UPDATE users SET is_admin = 0 WHERE id = 'conc1'");
+
+            // B måste nu blockera på samma rader och falla på lock wait timeout.
+            // Utan FOR UPDATE läser B i stället sitt eget snapshot, ser två
+            // administratörer, returnerar false direkt — och då blir det här
+            // testet rött, vilket är hela poängen med det.
+            $blocked = false;
+            try {
+                Persons::wouldLeaveNoAdmin($b, 'conc2');
+            } catch (PDOException) {
+                $blocked = true;
+            }
+
+            $this->assertTrue(
+                $blocked,
+                'SELECT ... FOR UPDATE måste blockera den andra transaktionen. '
+                . 'Blockerade den inte kan två samtidiga degraderingar lämna '
+                . 'systemet utan administratör.'
+            );
+        } finally {
+            $a->rollBack();
+            $b->rollBack();
+            $setup->exec("DELETE FROM users WHERE id IN ('conc1', 'conc2')");
         }
-
-        $a->commit();
-
-        if (!$blocked) {
-            // B fick låset först efter att A committat och ska då se sanningen.
-            $this->assertTrue(Persons::wouldLeaveNoAdmin($b, 'conc2'));
-        }
-        $b->rollBack();
-
-        $this->assertTrue($blocked || true, 'Låset måste antingen blockera B eller ge B rätt svar.');
-
-        $setup->exec("DELETE FROM users WHERE id IN ('conc1', 'conc2')");
     }
 }
 ```
 
-Kör: `composer test -- --filter LastAdminConcurrencyTest`
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test -- --filter LastAdminConcurrencyTest`
 Förväntat: PASS. Testet failar om `FOR UPDATE` tas bort ur
 `Persons::wouldLeaveNoAdmin()` — B ser då två administratörer och påståendet
 faller.
@@ -2045,7 +2190,7 @@ fwrite(STDOUT, "Administratör skapad: {$person['email']} ({$person['id']})\n");
 
 - [ ] **Step 7: Kör testerna och se att de passerar**
 
-Kör: `composer test -- --filter "PersonTest|LastAdminConcurrencyTest"`
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test -- --filter "PersonTest|LastAdminConcurrencyTest"`
 Förväntat: PASS — sju gröna tester plus samtidighetstestet.
 
 - [ ] **Step 8: Commit**
@@ -2125,7 +2270,7 @@ final class GroupTest extends ApiTestCase
 
 - [ ] **Step 2: Kör testerna och se att de failar**
 
-Kör: `composer test -- --filter GroupTest`
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test -- --filter GroupTest`
 Förväntat: FAIL — `501`.
 
 - [ ] **Step 3: Implementera handlern**
@@ -2215,7 +2360,7 @@ final class GroupHandler
 
 - [ ] **Step 4: Kör hela backend-sviten**
 
-Kör: `composer test`
+Kör: `docker compose -f docker/docker-compose.yml exec -T php composer test`
 Förväntat: PASS — samtliga backend-tester gröna.
 
 - [ ] **Step 5: Commit**
@@ -2585,19 +2730,35 @@ describe('auth', () => {
 });
 ```
 
-`tests/LoginView.test.js` — lägg till ett test för e-postfältet:
+`tests/LoginView.test.js` — **ersätt filens hela innehåll.** Befintliga tester
+väntar sig att `submit` bär en lösenordssträng och att `error` är en boolean;
+båda antagandena faller nu.
 
 ```js
-it('emittar submit med e-post och lösenord', async () => {
-  const wrapper = mount(LoginView);
+import { describe, it, expect } from 'vitest';
+import { mount } from '@vue/test-utils';
+import LoginView from '../src/components/LoginView.vue';
 
-  await wrapper.find('[data-testid="email"]').setValue('anna@example.com');
-  await wrapper.find('[data-testid="password"]').setValue('hemligt123');
-  await wrapper.find('form').trigger('submit.prevent');
+describe('LoginView', () => {
+  it('emittar submit med e-post och lösenord', async () => {
+    const wrapper = mount(LoginView);
 
-  expect(wrapper.emitted('submit')[0][0]).toEqual({
-    email: 'anna@example.com',
-    password: 'hemligt123',
+    await wrapper.find('[data-testid="email"]').setValue('anna@example.com');
+    await wrapper.find('[data-testid="password"]').setValue('hemligt123');
+    await wrapper.find('form').trigger('submit.prevent');
+
+    expect(wrapper.emitted('submit')[0][0]).toEqual({
+      email: 'anna@example.com',
+      password: 'hemligt123',
+    });
+  });
+
+  it('visar serverns felmeddelande i stället för en fast text', () => {
+    const wrapper = mount(LoginView, {
+      props: { error: 'För många försök. Vänta en stund.' },
+    });
+
+    expect(wrapper.text()).toContain('För många försök. Vänta en stund.');
   });
 });
 ```
@@ -2637,12 +2798,52 @@ export function changePassword(api, currentPassword, newPassword) {
 }
 ```
 
-- [ ] **Step 4: Lägg till e-postfältet i LoginView**
+- [ ] **Step 4: Skriv om LoginView**
 
-Lägg till ett `<input data-testid="email" type="email" v-model="email">` ovanför
-lösenordsfältet i `src/components/LoginView.vue`, och ändra submit-hanteraren
-till `emit('submit', { email: email.value, password: password.value })`.
-Etiketten är på svenska: `E-post`.
+`src/components/LoginView.vue` (ersätter filens hela innehåll):
+
+```vue
+<template>
+  <div class="min-h-screen flex items-center justify-center bg-base-200">
+    <form class="card bg-base-100 shadow-md p-6 w-80" @submit.prevent="onSubmit">
+      <h1 class="text-xl font-bold mb-4">Logga in</h1>
+      <input
+        data-testid="email"
+        type="email"
+        class="input input-bordered w-full mb-2"
+        placeholder="E-post"
+        v-model="email"
+      />
+      <input
+        data-testid="password"
+        type="password"
+        class="input input-bordered w-full mb-2"
+        placeholder="Lösenord"
+        v-model="password"
+      />
+      <p v-if="error" class="text-error text-sm mb-2">{{ error }}</p>
+      <button type="submit" class="btn btn-primary w-full">Logga in</button>
+    </form>
+  </div>
+</template>
+
+<script setup>
+import { ref } from 'vue';
+
+// error är nu en sträng från servern, inte en boolean. Meddelandet skiljer på
+// fel lösenord, spärrat konto och nätverksfel — den gamla fasta texten
+// "Fel lösenord" hade varit direkt missvisande vid 429.
+defineProps({ error: { type: String, default: null } });
+const emit = defineEmits(['submit']);
+
+const email = ref('');
+const password = ref('');
+
+function onSubmit() {
+  emit('submit', { email: email.value, password: password.value });
+}
+</script>
+```
 
 - [ ] **Step 5: Radera identitetslagret**
 
@@ -2676,18 +2877,54 @@ git commit -m "refactor: move authentication to the server session and drop loca
 
 - [ ] **Step 1: Skriv det failande testet**
 
-`tests/useStore.test.js` — lägg till:
+`tests/useStore.test.js` — **ersätt filens hela innehåll.** De befintliga
+testerna mockar `loadRegistry` och `loadVacations`, som inte längre finns.
 
 ```js
-it('lägger till den skapade raden lokalt utan att ladda om allt', async () => {
-  const dataStore = {
+import { describe, it, expect, vi } from 'vitest';
+import { createStore } from '../src/composables/useStore.js';
+
+function fakeDataStore(overrides = {}) {
+  return {
     bootstrap: vi.fn().mockResolvedValue({
-      me: { id: 'p1', isAdmin: false }, groups: [], persons: [], vacations: [],
+      me: { id: 'p1', isAdmin: false },
+      groups: [{ id: 'g1', name: 'A' }],
+      persons: [{ id: 'p1', name: 'Anna', groupId: 'g1' }],
+      vacations: [],
     }),
+    ...overrides,
+  };
+}
+
+describe('useStore', () => {
+  it('refresh fyller state från bootstrap', async () => {
+    const store = createStore(fakeDataStore());
+
+    await store.refresh('2026-06-01', '2026-06-30');
+
+    expect(store.groups.value).toHaveLength(1);
+    expect(store.persons.value).toHaveLength(1);
+    expect(store.me.value.id).toBe('p1');
+    expect(store.error.value).toBe(null);
+  });
+
+  it('sätter error vid läsfel', async () => {
+    const ds = fakeDataStore({
+      bootstrap: vi.fn().mockRejectedValue(new Error('nätverk')),
+    });
+    const store = createStore(ds);
+
+    await store.refresh('2026-06-01', '2026-06-30');
+
+    expect(store.error.value).toBeTruthy();
+  });
+
+  it('lägger till den skapade raden lokalt utan att ladda om allt', async () => {
+  const dataStore = fakeDataStore({
     addVacation: vi.fn().mockResolvedValue(
       { id: 'v1', personId: 'p1', start: '2026-06-16', end: '2026-06-20' }
     ),
-  };
+  });
   const store = createStore(dataStore);
   await store.refresh('2026-06-01', '2026-06-30');
 
@@ -2698,13 +2935,13 @@ it('lägger till den skapade raden lokalt utan att ladda om allt', async () => {
 });
 
 it('tar bort raden lokalt vid radering', async () => {
-  const dataStore = {
+  const dataStore = fakeDataStore({
     bootstrap: vi.fn().mockResolvedValue({
       me: { id: 'p1' }, groups: [], persons: [],
       vacations: [{ id: 'v1', personId: 'p1', start: '2026-06-16', end: '2026-06-20' }],
     }),
     removeVacation: vi.fn().mockResolvedValue({ ok: true }),
-  };
+  });
   const store = createStore(dataStore);
   await store.refresh('2026-06-01', '2026-06-30');
 
@@ -2712,6 +2949,7 @@ it('tar bort raden lokalt vid radering', async () => {
 
   expect(store.vacations.value).toHaveLength(0);
   expect(dataStore.bootstrap).toHaveBeenCalledTimes(1);
+  });
 });
 ```
 
@@ -2824,7 +3062,7 @@ git commit -m "perf: update store state from responses instead of reloading ever
 ### Task 13: AdminPanel, lösenordsbyte och App-wiring
 
 **Files:**
-- Modify: `src/components/AdminPanel.vue`, `tests/AdminPanel.test.js`, `src/App.vue`
+- Modify: `src/components/AdminPanel.vue`, `tests/AdminPanel.test.js`, `src/App.vue`, `src/composables/useDefaultRange.js`, `tests/useDefaultRange.test.js`
 - Create: `src/components/ChangePasswordView.vue`, `tests/ChangePasswordView.test.js`
 
 **Interfaces:**
@@ -2833,27 +3071,59 @@ git commit -m "perf: update store state from responses instead of reloading ever
 
 - [ ] **Step 1: Skriv de failande testerna**
 
-`tests/AdminPanel.test.js` — lägg till:
+`tests/AdminPanel.test.js` — **ersätt filens hela innehåll.** Det befintliga
+testet väntar sig `add-person` med `{ name, groupId }`, vilket inte längre är
+nyttolasten.
 
 ```js
-it('emittar add-person med e-post, lösenord och adminflagga', async () => {
-  const wrapper = mount(AdminPanel, { props: { groups: [], persons: [] } });
+import { describe, it, expect } from 'vitest';
+import { mount } from '@vue/test-utils';
+import AdminPanel from '../src/components/AdminPanel.vue';
 
-  await wrapper.find('[data-testid="new-person"]').setValue('Anna');
-  await wrapper.find('[data-testid="new-person-email"]').setValue('anna@example.com');
-  await wrapper.find('[data-testid="new-person-password"]').setValue('hemligt123');
-  await wrapper.find('[data-testid="new-person-admin"]').setValue(true);
-  await wrapper.find('[data-testid="add-person"]').trigger('click');
+const groups = [{ id: 'g1', name: 'Team A' }];
+const persons = [{ id: 'p1', name: 'Anna', groupId: 'g1' }];
 
-  expect(wrapper.emitted('add-person')[0][0]).toEqual({
-    name: 'Anna',
-    email: 'anna@example.com',
-    password: 'hemligt123',
-    groupId: null,
-    isAdmin: true,
+describe('AdminPanel', () => {
+  it('emittar add-group med namnet', async () => {
+    const wrapper = mount(AdminPanel, { props: { groups, persons } });
+
+    await wrapper.find('[data-testid="new-group"]').setValue('Team B');
+    await wrapper.find('[data-testid="add-group"]').trigger('click');
+
+    expect(wrapper.emitted('add-group')[0][0]).toBe('Team B');
+  });
+
+  it('emittar set-person-group vid gruppbyte', async () => {
+    const wrapper = mount(AdminPanel, { props: { groups, persons } });
+
+    await wrapper.find('[data-testid="person-group-p1"]').setValue('g1');
+
+    expect(wrapper.emitted('set-person-group')[0][0]).toEqual({ id: 'p1', groupId: 'g1' });
+  });
+
+  it('emittar add-person med e-post, lösenord och adminflagga', async () => {
+    const wrapper = mount(AdminPanel, { props: { groups, persons } });
+
+    await wrapper.find('[data-testid="new-person"]').setValue('Bo');
+    await wrapper.find('[data-testid="new-person-email"]').setValue('bo@example.com');
+    await wrapper.find('[data-testid="new-person-password"]').setValue('hemligt123');
+    await wrapper.find('[data-testid="new-person-admin"]').setValue(true);
+    await wrapper.find('[data-testid="add-person"]').trigger('click');
+
+    expect(wrapper.emitted('add-person')[0][0]).toEqual({
+      name: 'Bo',
+      email: 'bo@example.com',
+      password: 'hemligt123',
+      groupId: null,
+      isAdmin: true,
+    });
   });
 });
 ```
+
+**Not:** `data-testid="add-group"`, `add-person` och `person-group-<id>` måste
+finnas i `AdminPanel.vue`. Saknas de, lägg till dem i steg 3 — testerna ovan är
+skrivna mot dem.
 
 `tests/ChangePasswordView.test.js`:
 
@@ -2959,45 +3229,112 @@ function onSubmit() {
 </script>
 ```
 
-- [ ] **Step 5: Koppla ihop App.vue**
+- [ ] **Step 5: Lägg till månad-till-datum-konvertering**
 
-Ersätt `<script setup>` i `src/App.vue` med följande. Ta bort all import av
-`identity.js` och `PersonSelectView.vue` samt all läsning av `localStorage`;
-sessionen är identiteten nu.
+`defaultRange(today)` returnerar **månader** (`{ from: '2026-09', to: '2026-11' }`),
+men `/api/bootstrap` vill ha datum. Konverteringen saknas och måste skrivas.
+
+Lägg till i `src/composables/useDefaultRange.js`:
 
 ```js
-import { ref, computed, onMounted } from 'vue';
+// defaultRange ger månader; API:et vill ha datum. Sista dagen i to-månaden
+// räknas ut med dag 0 i nästa månad, vilket hanterar både 28, 29, 30 och 31.
+export function monthRangeToDates({ from, to }) {
+  const [year, month] = to.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+  return { from: `${from}-01`, to: `${to}-${String(lastDay).padStart(2, '0')}` };
+}
+```
+
+Lägg till i `tests/useDefaultRange.test.js` (befintliga tester rörs inte):
+
+```js
+import { monthRangeToDates } from '../src/composables/useDefaultRange.js';
+
+it('konverterar månadsintervall till datum', () => {
+  expect(monthRangeToDates({ from: '2026-09', to: '2026-11' }))
+    .toEqual({ from: '2026-09-01', to: '2026-11-30' });
+});
+
+it('hanterar februari under skottår', () => {
+  expect(monthRangeToDates({ from: '2024-02', to: '2024-02' }))
+    .toEqual({ from: '2024-02-01', to: '2024-02-29' });
+});
+```
+
+Kör: `npx vitest run tests/useDefaultRange.test.js`
+Förväntat: PASS.
+
+**Konsekvens för räkningen i spec §10:** `useDefaultRange.test.js` var listad
+som orörd. Den blir nu åtta orörda testfiler i stället för nio, plus en utökad.
+De befintliga testerna i filen ändras inte.
+
+- [ ] **Step 6: Ändra App.vue**
+
+`App.vue` innehåller `range`, `groupFilterId`, `modalOpen`, `editing`,
+`openNewVacation`, `openEditVacation`, `onSaveVacation` och `onDeleteVacation`.
+**Inget av det får raderas** — det är kalendervyn. Gör följande ändringar i
+befintlig fil:
+
+**Importer.** Ta bort `createGithubClient`, `createLocalClient`,
+`isAuthenticated`, `setPersonId`, `resolveIdentity` och `PersonSelectView`.
+Lägg till:
+
+```js
+import { ref, computed, onMounted, watch } from 'vue';
 import { createApiClient } from './lib/apiClient.js';
-import { createDataStore } from './lib/dataStore.js';
 import { createStore } from './composables/useStore.js';
+import { defaultRange, monthRangeToDates } from './composables/useDefaultRange.js';
 import { login, logout, currentUser, changePassword } from './lib/auth.js';
-import { useDefaultRange } from './composables/useDefaultRange.js';
-import config from './config.js';
+import ChangePasswordView from './components/ChangePasswordView.vue';
+```
 
-const user = ref(null);
-const loginError = ref(null);
+**Klient och store.** Ersätt hela `client`/`dataStore`-blocket med:
 
+```js
 // onUnauthorized fångar en session som gått ut mitt i arbetet: appen faller
 // tillbaka till inloggningsvyn i stället för att visa ett tomt rutnät.
 const api = createApiClient({
   baseUrl: config.apiBaseUrl,
   onUnauthorized: () => { user.value = null; },
 });
-
 const store = createStore(createDataStore({ api }));
-const { from, to } = useDefaultRange();
+```
+
+**Identitet.** Ersätt `authed`, `loginError` och `myPersonId` med:
+
+```js
+const user = ref(null);
+const loginError = ref(null);          // sträng, inte boolean
 const isAdmin = computed(() => store.me.value?.isAdmin === true);
+const myName = computed(() => store.me.value?.name ?? '');
+```
+
+Ta bort `onSelectPerson`, `onCreatePerson` och `afterAuth`. Behåll
+`onRemovePerson` men ta bort raden som anropar `resolveIdentity`.
+
+**Laddning och intervallbyte.** `range` håller månader, så varje anrop går
+genom konverteringen. Utan bevakningen laddas aldrig nya månader in:
+
+```js
+function reload() {
+  const { from, to } = monthRangeToDates(range.value);
+  return store.refresh(from, to);
+}
 
 onMounted(async () => {
   user.value = await currentUser(api);
-  if (user.value) await store.refresh(from.value, to.value);
+  if (user.value) await reload();
 });
+
+watch(range, reload);
 
 async function onLogin({ email, password }) {
   loginError.value = null;
   try {
     user.value = await login(api, email, password);
-    await store.refresh(from.value, to.value);
+    await reload();
   } catch (e) {
     loginError.value = e.message;
   }
@@ -3008,22 +3345,31 @@ async function onLogout() {
   user.value = null;
 }
 
-async function onChangePassword({ currentPassword, newPassword }) {
-  await changePassword(api, currentPassword, newPassword);
+function onChangePassword({ currentPassword, newPassword }) {
+  return changePassword(api, currentPassword, newPassword);
 }
 ```
 
-I `<template>`: rendera `LoginView` när `user` är `null`, annars kalendern.
-`AdminPanel` renderas med `v-if="isAdmin"`, och `ChangePasswordView` renderas
-för alla inloggade. Koppla `@submit="onLogin"`, `@submit="onChangePassword"`
-och en utloggningsknapp till `onLogout`.
+**Semestersparande.** `onSaveVacation` använde `myPersonId`. Byt den raden till
+`store.me.value.id`:
 
-- [ ] **Step 6: Kör hela frontend-sviten**
+```js
+else await store.addVacation(store.me.value.id, start, end);
+```
+
+**Template.** Ta bort hela `PersonSelectView`-blocket och ändra villkoren:
+`LoginView` renderas på `v-if="!user"`, huvudvyn på `v-else`. `AdminPanel` får
+`v-if="isAdmin"`, och dess `@add-person` blir `store.addPerson` (en enda
+objekt-parameter nu, inte två). Lägg till `<ChangePasswordView
+@submit="onChangePassword" />` och en utloggningsknapp som anropar `onLogout`.
+`store.refresh()` i felrutans "Försök igen"-knapp byts mot `reload`.
+
+- [ ] **Step 7: Kör hela frontend-sviten**
 
 Kör: `npm test -- --run`
 Förväntat: PASS — samtliga testfiler gröna.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add src tests
@@ -3127,13 +3473,14 @@ kontot. Ta bort allt om GitHub API, PAT och `gh-pages`.
 
 - [ ] **Step 6: Kör hela sviten och bygget**
 
-Kör: `npm test -- --run && npm run build && composer test`
+Kör: `npm test -- --run && npm run build && docker compose -f docker/docker-compose.yml exec -T php composer test`
 Förväntat: PASS på alla tre.
 
-Kontrollera samtidigt att de nio orörda testfilerna fortfarande är gröna utan
-att ha ändrats: `dates`, `grouping`, `validation`, `vacationLookup`,
-`useDefaultRange`, `CalendarGrid`, `CalendarControls`, `VacationModal` och
-`smoke`. `git diff --stat main -- tests/` ska inte visa någon av dem. Det är
+Kontrollera samtidigt att de åtta helt orörda testfilerna fortfarande är gröna
+utan att ha ändrats: `dates`, `grouping`, `validation`, `vacationLookup`,
+`CalendarGrid`, `CalendarControls`, `VacationModal` och `smoke`.
+`useDefaultRange.test.js` har fått ett tillägg i Task 13 men inga ändrade
+tester. `git diff --stat main -- tests/` ska inte visa de åtta. Det är
 kvittot på att datalagret verkligen var isolerat — behövde någon av dem ändras
 har en gräns läckt, och det bör rapporteras i stället för tystas ner.
 
@@ -3164,9 +3511,9 @@ git commit -m "chore: build for the new backend and replace the gh-pages deploy"
 - [ ] **Step 1: Starta miljön och seeda ett adminkonto**
 
 ```bash
-docker compose -f docker/docker-compose.yml up -d
-docker compose -f docker/docker-compose.yml exec -T db \
-  mariadb -uroot -proot vacation < db/schema.sql
+docker compose -f docker/docker-compose.yml up -d --build
+docker compose -f docker/docker-compose.yml exec -T php composer install
+docker compose -f docker/docker-compose.yml exec -T db mariadb -uroot -proot vacation < db/schema.sql
 docker compose -f docker/docker-compose.yml exec php php db/create-admin.php
 ```
 
@@ -3187,9 +3534,10 @@ curl -i -c cookies.txt -X POST http://localhost:8080/api/session \
 ```
 
 Förväntat: `200`, och `Set-Cookie` med `HttpOnly` och `SameSite=Strict`.
-**Notera:** `Secure` gör att cookien inte sätts över ren HTTP. I Docker testas
-därför flödet med `Secure` avstängd via en miljövariabel i `Auth::start()`;
-i produktion är den alltid på.
+**`Secure` saknas här, och ska göra det:** dev-`config.php` sätter
+`cookie_secure => false` eftersom Docker kör ren HTTP och browsern annars aldrig
+sparar cookien. Kontrollera att produktionens `config.php` har `true` innan
+deploy — det är den enda skillnaden mellan miljöerna.
 
 - [ ] **Step 4: Kör igenom kalenderflödet i browsern**
 
