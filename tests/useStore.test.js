@@ -68,6 +68,19 @@ it('tar bort raden lokalt vid radering', async () => {
   expect(dataStore.bootstrap).toHaveBeenCalledTimes(1);
   });
 
+  it('updatePerson uppdaterar personen lokalt efter ett lösenordsbyte i adminpanelen', async () => {
+    const dataStore = fakeDataStore({
+      updatePerson: vi.fn().mockResolvedValue({ id: 'p1', name: 'Anna', groupId: 'g1' }),
+    });
+    const store = createStore(dataStore);
+    await store.refresh('2026-06-01', '2026-06-30');
+
+    await store.updatePerson('p1', { password: 'nyttlosen123' });
+
+    expect(dataStore.updatePerson).toHaveBeenCalledWith('p1', { password: 'nyttlosen123' });
+    expect(store.persons.value.find((p) => p.id === 'p1')).toBeTruthy();
+  });
+
   it('behåller personId vid uppdatering trots att servern inte skickar det tillbaka', async () => {
     const dataStore = fakeDataStore({
       bootstrap: vi.fn().mockResolvedValue({

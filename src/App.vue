@@ -21,12 +21,13 @@
       v-if="isAdmin"
       :groups="store.groups.value"
       :persons="store.persons.value"
-      @add-group="store.addGroup"
-      @rename-group="(e) => store.renameGroup(e.id, e.name)"
-      @remove-group="store.removeGroup"
-      @add-person="store.addPerson"
-      @set-person-group="(e) => store.setPersonGroup(e.id, e.groupId)"
+      @add-group="(name) => guard(store.addGroup(name))"
+      @rename-group="(e) => guard(store.renameGroup(e.id, e.name))"
+      @remove-group="(id) => guard(store.removeGroup(id))"
+      @add-person="(payload) => guard(store.addPerson(payload))"
+      @set-person-group="(e) => guard(store.setPersonGroup(e.id, e.groupId))"
       @remove-person="onRemovePerson"
+      @set-password="onSetPassword"
     />
 
     <ChangePasswordView
@@ -59,6 +60,7 @@
       v-model="modalOpen"
       :vacation="editing"
       :person-name="myName"
+      :error="vacationError"
       @save="onSaveVacation"
       @delete="onDeleteVacation"
     />
@@ -80,22 +82,40 @@ import CalendarControls from './components/CalendarControls.vue';
 import CalendarGrid from './components/CalendarGrid.vue';
 import VacationModal from './components/VacationModal.vue';
 
+// Delas mellan onUnauthorized och onLogout: båda måste rensa exakt samma
+// tillstånd. Med bara den ena rensad beskrev isAdmin/myName fortfarande
+// föregående användare efter en utloggning + ny inloggning, tills reload()
+// hunnit svara — adminpanelen kunde då blinka fram för en icke-admin.
+function clearSessionState() {
+  user.value = null;
+  store.groups.value = [];
+  store.persons.value = [];
+  store.vacations.value = [];
+  store.me.value = null;
+  store.error.value = null;
+}
+
 // onUnauthorized fångar en session som gått ut mitt i arbetet: appen faller
 // tillbaka till inloggningsvyn i stället för att visa ett tomt rutnät. Även
 // den gamla datan rensas ur store, annars hinner föregående vy blinka till
 // innan reload() vid nästa inloggning hunnit svara.
 const api = createApiClient({
   baseUrl: config.apiBaseUrl,
-  onUnauthorized: () => {
-    user.value = null;
-    store.groups.value = [];
-    store.persons.value = [];
-    store.vacations.value = [];
-    store.me.value = null;
-    store.error.value = null;
-  },
+  onUnauthorized: clearSessionState,
 });
 const store = createStore(createDataStore({ api }));
+
+// Fångar fel från mutate() så att en 422/403 inte blir en ohanterad
+// promise-rejection. Felmeddelandet finns redan i store.error.value (satt av
+// mutate) och visas av felbannern längst upp — den här funktionen behöver
+// bara se till att avvisningen inte studsar vidare oregistrerad.
+async function guard(promise) {
+  try {
+    await promise;
+  } catch {
+    // Redan synligt via store.error.value.
+  }
+}
 
 const user = ref(null);
 const loginError = ref(null);          // sträng, inte boolean
@@ -135,8 +155,15 @@ async function onLogin({ email, password }) {
 }
 
 async function onLogout() {
-  await logout(api);
-  user.value = null;
+  try {
+    await logout(api);
+  } catch {
+    // Servern kunde inte nås eller svarade med fel — det lokala tillståndet
+    // rensas ändå nedan, så användaren aldrig ser ut att fortfarande vara
+    // inloggad. Utan try/catch här lämnade ett trasigt anrop en ohanterad
+    // promise-rejection och användaren såg ut att vara kvar.
+  }
+  clearSessionState();
 }
 
 const changePasswordError = ref(null);
@@ -154,26 +181,49 @@ async function onChangePassword({ currentPassword, newPassword }) {
 }
 
 async function onRemovePerson(id) {
-  await store.removePerson(id);
+  await guard(store.removePerson(id));
 }
+
+async function onSetPassword({ id, password }) {
+  await guard(store.updatePerson(id, { password }));
+}
+
+const vacationError = ref(null);
 
 function openNewVacation() {
   editing.value = null;
+  vacationError.value = null;
   modalOpen.value = true;
 }
 function openEditVacation({ vacation }) {
   editing.value = vacation;
+  vacationError.value = null;
   modalOpen.value = true;
 }
 
+// Fångar fel explicit i stället för att låta store.mutate()s rethrow studsa
+// vidare oregistrerad: modalen ligger som ett <dialog>-lager ovanpå resten av
+// sidan, så felbannern längst upp (som store.error.value styr) syns aldrig
+// medan modalen är öppen. Felet visas därför i modalen själv, och modalen
+// hålls kvar öppen så användaren kan rätta och försöka igen.
 async function onSaveVacation({ start, end }) {
-  if (editing.value) await store.updateVacation(editing.value.id, start, end);
-  else await store.addVacation(store.me.value.id, start, end);
-  modalOpen.value = false;
+  vacationError.value = null;
+  try {
+    if (editing.value) await store.updateVacation(editing.value.id, start, end);
+    else await store.addVacation(store.me.value.id, start, end);
+    modalOpen.value = false;
+  } catch (e) {
+    vacationError.value = e.message || 'Kunde inte spara semestern.';
+  }
 }
 
 async function onDeleteVacation({ id }) {
-  await store.removeVacation(id);
-  modalOpen.value = false;
+  vacationError.value = null;
+  try {
+    await store.removeVacation(id);
+    modalOpen.value = false;
+  } catch (e) {
+    vacationError.value = e.message || 'Kunde inte ta bort semestern.';
+  }
 }
 </script>

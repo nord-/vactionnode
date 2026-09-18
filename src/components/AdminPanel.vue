@@ -42,6 +42,21 @@
                 <option value="">Ogrupperade</option>
                 <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
               </select>
+              <input
+                :data-testid="`person-password-${p.id}`"
+                type="password"
+                class="input input-bordered input-sm"
+                placeholder="Nytt lösenord"
+                v-model="passwordDrafts[p.id]"
+              />
+              <button
+                :data-testid="`set-password-${p.id}`"
+                class="btn btn-ghost btn-sm"
+                :disabled="(passwordDrafts[p.id] || '').length < 8"
+                @click="setPassword(p.id)"
+              >
+                Spara lösenord
+              </button>
               <button
                 :data-testid="`remove-person-${p.id}`"
                 class="btn btn-ghost btn-sm"
@@ -79,12 +94,12 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, reactive } from 'vue';
 
 defineProps({ groups: { type: Array, required: true }, persons: { type: Array, required: true } });
 const emit = defineEmits([
   'add-group', 'rename-group', 'remove-group',
-  'add-person', 'set-person-group', 'remove-person',
+  'add-person', 'set-person-group', 'remove-person', 'set-password',
 ]);
 
 const newGroup = ref('');
@@ -93,6 +108,9 @@ const newPersonEmail = ref('');
 const newPersonPassword = ref('');
 const newPersonAdmin = ref(false);
 const newPersonGroup = ref('');
+// Nyckel per person-id, inte en delad ref — annars läcker ett halvskrivet
+// lösenord i en rad in i en annan när listan renderas om.
+const passwordDrafts = reactive({});
 
 function addGroup() {
   emit('add-group', newGroup.value.trim());
@@ -116,5 +134,9 @@ function removePerson(id) {
   if (confirm('Ta bort personen och alla dess registrerade semestrar?')) {
     emit('remove-person', id);
   }
+}
+function setPassword(id) {
+  emit('set-password', { id, password: passwordDrafts[id] });
+  passwordDrafts[id] = '';
 }
 </script>

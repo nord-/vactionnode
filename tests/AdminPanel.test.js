@@ -56,4 +56,21 @@ describe('AdminPanel', () => {
     expect(w.emitted('remove-person')).toBeFalsy();
     window.confirm.mockRestore();
   });
+
+  it('emittar set-password med personens id och det nya lösenordet', async () => {
+    const w = mount(AdminPanel, { props: { groups, persons } });
+
+    await w.find('[data-testid="person-password-p1"]').setValue('nyttlosen123');
+    await w.find('[data-testid="set-password-p1"]').trigger('click');
+
+    expect(w.emitted('set-password')[0][0]).toEqual({ id: 'p1', password: 'nyttlosen123' });
+  });
+
+  it('inaktiverar Spara lösenord under 8 tecken', async () => {
+    const w = mount(AdminPanel, { props: { groups, persons } });
+
+    await w.find('[data-testid="person-password-p1"]').setValue('kort');
+
+    expect(w.find('[data-testid="set-password-p1"]').attributes('disabled')).toBeDefined();
+  });
 });

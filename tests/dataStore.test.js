@@ -42,6 +42,15 @@ describe('dataStore', () => {
     expect(api.put).toHaveBeenCalledWith('/persons/p1', { groupId: null });
   });
 
+  it('skickar bara lösenord vid lösenordsbyte i adminpanelen', async () => {
+    const api = fakeApi();
+    const store = createDataStore({ api });
+
+    await store.updatePerson('p1', { password: 'nyttlosen123' });
+
+    expect(api.put).toHaveBeenCalledWith('/persons/p1', { password: 'nyttlosen123' });
+  });
+
   it('returnerar den skapade semesterraden i stället för hela datasetet', async () => {
     const created = { id: 'v1', personId: 'p1', start: '2026-06-16', end: '2026-06-20' };
     const api = fakeApi({ post: vi.fn().mockResolvedValue(created) });
