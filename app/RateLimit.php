@@ -31,7 +31,16 @@ final class RateLimit
         $hops = array_map('trim', explode(',', $server['HTTP_X_FORWARDED_FOR'] ?? ''));
         $last = end($hops);
 
-        return $last === '' ? $remote : $last;
+        // Ett trasigt sista hopp får aldrig nå inet_pton(): det binds då som
+        // '' och kolliderar med NULL-IP-sentinelen, så en enda felformad
+        // header kan låsa ute alla null-IP-försök samtidigt. Validera innan
+        // retur; falla tillbaka på REMOTE_ADDR om den själv är giltig,
+        // annars null.
+        if ($last !== '' && filter_var($last, FILTER_VALIDATE_IP) !== false) {
+            return $last;
+        }
+
+        return filter_var($remote, FILTER_VALIDATE_IP) !== false ? $remote : null;
     }
 
     public static function tooManyAttempts(PDO $pdo, string $email, ?string $ip): bool

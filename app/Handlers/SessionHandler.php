@@ -7,6 +7,14 @@ use PDO;
 
 final class SessionHandler
 {
+    // Äkta bcrypt-hash av en slängsträng, aldrig ett giltigt lösenord för
+    // något konto. Finns bara för att password_verify() ska köras exakt en
+    // gång oavsett gren — annars läcker svarstiden vilken av de tre
+    // avvisningsorsakerna (okänt konto, NULL-hash, fel lösenord) det var,
+    // trots att svarskroppen är identisk. Genererad med samma PASSWORD_DEFAULT
+    // som de riktiga hasharna, så kostnadsfaktorn matchar.
+    private const DUMMY_HASH = '$2y$10$Mch47B42oJxevZqkNmE5yeBUHn5XDN8WVOIjuZSn.v9QKo7BMYlLK';
+
     public function __construct(private PDO $pdo) {}
 
     public function login(?array $user, ?string $id = null): void
@@ -29,10 +37,15 @@ final class SessionHandler
         $stmt->execute([$email]);
         $row = $stmt->fetch();
 
+        $hashExists = $row !== false && $row['password_hash'] !== null;
+        // Verifiera alltid mot en hash — dummyn när kontot saknas eller
+        // saknar lösenord — så att bcrypt-kostnaden är densamma oavsett
+        // gren och svarstiden inte avslöjar vilken avvisningsorsak det var.
+        $passwordOk = password_verify($password, $hashExists ? $row['password_hash'] : self::DUMMY_HASH);
+
         // Samma svar oavsett om kontot saknas, saknar lösenord eller har fel
         // lösenord — annars blir endpointen en kontolista.
-        if ($row === false || $row['password_hash'] === null
-            || !password_verify($password, $row['password_hash'])) {
+        if (!$hashExists || !$passwordOk) {
             RateLimit::record($this->pdo, $email, $ip);
             Http::error('invalid_credentials', 'Fel e-post eller lösenord.', 401);
             return;
