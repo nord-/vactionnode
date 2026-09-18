@@ -16,5 +16,9 @@ npm run build
 # --delete utan undantaget raderar front controllern och tar ner API:et.
 rsync -az --delete --exclude=api/ dist/ "$NAS:$ROOT/public/"
 rsync -az --delete app/ "$NAS:$ROOT/app/"
+# public/api/ (front controllern index.php och .htaccess) synkas separat —
+# den ligger varken i dist/ (uteslutet ovan) eller i app/, så utan den här
+# raden når en ändring där aldrig produktion.
+rsync -az --delete public/api/ "$NAS:$ROOT/public/api/"
 
 echo "Klart. db/ och config.php deployas separat vid installationen."

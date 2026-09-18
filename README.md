@@ -77,7 +77,9 @@ npm run deploy
 ```
 
 Detta kör `scripts/deploy.sh`, som bygger, synkar `dist/` till portalens
-`public/` (utan att röra `public/api/`) och synkar `app/` separat. `db/` och
-`config.php` deployas manuellt vid installationen — se skriptet för detaljer.
+`public/` (utan att röra `public/api/`), synkar `app/` separat och synkar
+`public/api/` (front controllern `index.php` och `.htaccess`) för sig. `db/`
+och `config.php` deployas manuellt vid installationen — se skriptet för
+detaljer.
 `rsync` krävs på maskinen som deployar; skriptet avbryter med ett tydligt fel
 om det saknas.
