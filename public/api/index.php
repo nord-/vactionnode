@@ -27,6 +27,12 @@ try {
         rtrim($path, '/') ?: '/'
     );
 } catch (Throwable $e) {
-    error_log((string) $e);
+    // Aldrig (string) $e eller $e->getTraceAsString(): PHP inkluderar
+    // anropsargument i spårningen om inte zend.exception_ignore_args=1 är
+    // satt, vilket php:8.2-apache-avbildningen inte gör. Db::connect() körs
+    // i samma try, så ett fel lösenord eller en onåbar databas hade skrivit
+    // PDO->__construct()-anropet — lösenordet inklusive — rakt in i
+    // Apache-loggen.
+    error_log(sprintf('%s in %s:%d', $e->getMessage(), $e->getFile(), $e->getLine()));
     App\Http::error('server_error', 'Något gick fel.', 500);
 }
