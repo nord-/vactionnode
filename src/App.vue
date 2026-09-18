@@ -1,37 +1,35 @@
 <template>
   <!-- Steg 1: inloggning -->
-  <LoginView v-if="!authed" :error="loginError" @submit="onLogin" />
+  <LoginView v-if="!user" :error="loginError" @submit="onLogin" />
 
-  <!-- Steg 2: välj person -->
-  <PersonSelectView
-    v-else-if="!myPersonId"
-    :persons="store.persons.value"
-    @select="onSelectPerson"
-    @create="onCreatePerson"
-  />
-
-  <!-- Steg 3: huvudvy -->
+  <!-- Steg 2: huvudvy -->
   <div v-else class="p-4 max-w-full">
     <div class="flex items-center justify-between mb-4">
       <h1 class="text-2xl font-bold">Semesterkalender</h1>
-      <span class="text-sm opacity-70">Inloggad som {{ myName }}</span>
+      <div class="flex items-center gap-4">
+        <span class="text-sm opacity-70">Inloggad som {{ myName }}</span>
+        <button class="btn btn-ghost btn-sm" @click="onLogout">Logga ut</button>
+      </div>
     </div>
 
     <div v-if="store.error.value" class="alert alert-error mb-4">
       <span>{{ store.error.value }}</span>
-      <button class="btn btn-sm" @click="store.refresh()">Försök igen</button>
+      <button class="btn btn-sm" @click="reload">Försök igen</button>
     </div>
 
     <AdminPanel
+      v-if="isAdmin"
       :groups="store.groups.value"
       :persons="store.persons.value"
       @add-group="store.addGroup"
       @rename-group="(e) => store.renameGroup(e.id, e.name)"
       @remove-group="store.removeGroup"
-      @add-person="(e) => store.addPerson(e.name, e.groupId)"
+      @add-person="store.addPerson"
       @set-person-group="(e) => store.setPersonGroup(e.id, e.groupId)"
       @remove-person="onRemovePerson"
     />
+
+    <ChangePasswordView @submit="onChangePassword" />
 
     <CalendarControls
       :from-month="range.from"
@@ -64,41 +62,32 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import config from './config.js';
-import { createGithubClient } from './lib/githubClient.js';
-import { createLocalClient } from './lib/localClient.js';
+import { createApiClient } from './lib/apiClient.js';
 import { createDataStore } from './lib/dataStore.js';
 import { createStore } from './composables/useStore.js';
-import { defaultRange } from './composables/useDefaultRange.js';
-import { isAuthenticated, login } from './lib/auth.js';
-import { setPersonId, resolveIdentity } from './lib/identity.js';
+import { defaultRange, monthRangeToDates } from './composables/useDefaultRange.js';
+import { login, logout, currentUser, changePassword } from './lib/auth.js';
 import LoginView from './components/LoginView.vue';
-import PersonSelectView from './components/PersonSelectView.vue';
+import ChangePasswordView from './components/ChangePasswordView.vue';
 import AdminPanel from './components/AdminPanel.vue';
 import CalendarControls from './components/CalendarControls.vue';
 import CalendarGrid from './components/CalendarGrid.vue';
 import VacationModal from './components/VacationModal.vue';
 
-const client =
-  config.dataBackend === 'local'
-    ? createLocalClient()
-    : createGithubClient({
-        owner: config.github.owner,
-        repo: config.github.repo,
-        branch: config.github.branch,
-        token: config.github.token,
-      });
-const dataStore = createDataStore({
-  client,
-  registryPath: config.github.registryPath,
-  vacationsPath: config.github.vacationsPath,
+// onUnauthorized fångar en session som gått ut mitt i arbetet: appen faller
+// tillbaka till inloggningsvyn i stället för att visa ett tomt rutnät.
+const api = createApiClient({
+  baseUrl: config.apiBaseUrl,
+  onUnauthorized: () => { user.value = null; },
 });
-const store = createStore(dataStore);
+const store = createStore(createDataStore({ api }));
 
-const authed = ref(isAuthenticated());
-const loginError = ref(false);
-const myPersonId = ref(null);
+const user = ref(null);
+const loginError = ref(null);          // sträng, inte boolean
+const isAdmin = computed(() => store.me.value?.isAdmin === true);
+const myName = computed(() => store.me.value?.name ?? '');
 
 const range = ref(defaultRange(new Date()));
 const groupFilterId = ref('all');
@@ -106,43 +95,43 @@ const groupFilterId = ref('all');
 const modalOpen = ref(false);
 const editing = ref(null);
 
-const myName = computed(
-  () => store.persons.value.find((p) => p.id === myPersonId.value)?.name ?? '',
-);
+function reload() {
+  const { from, to } = monthRangeToDates(range.value);
+  return store.refresh(from, to);
+}
 
 onMounted(async () => {
-  if (authed.value) await afterAuth();
+  try {
+    user.value = await currentUser(api);
+  } catch {
+    user.value = null;
+  }
+  if (user.value) await reload();
 });
 
-async function onLogin(password) {
-  if (login(password, config.password)) {
-    authed.value = true;
-    loginError.value = false;
-    await afterAuth();
-  } else {
-    loginError.value = true;
+watch(range, reload);
+
+async function onLogin({ email, password }) {
+  loginError.value = null;
+  try {
+    user.value = await login(api, email, password);
+    await reload();
+  } catch (e) {
+    loginError.value = e.message;
   }
 }
 
-async function afterAuth() {
-  await store.refresh();
-  myPersonId.value = resolveIdentity(store.persons.value);
+async function onLogout() {
+  await logout(api);
+  user.value = null;
 }
 
-function onSelectPerson(id) {
-  setPersonId(id);
-  myPersonId.value = id;
-}
-
-async function onCreatePerson(name) {
-  const created = await store.addPerson(name, null);
-  setPersonId(created.id);
-  myPersonId.value = created.id;
+function onChangePassword({ currentPassword, newPassword }) {
+  return changePassword(api, currentPassword, newPassword);
 }
 
 async function onRemovePerson(id) {
   await store.removePerson(id);
-  if (id === myPersonId.value) myPersonId.value = resolveIdentity(store.persons.value);
 }
 
 function openNewVacation() {
@@ -156,7 +145,7 @@ function openEditVacation({ vacation }) {
 
 async function onSaveVacation({ start, end }) {
   if (editing.value) await store.updateVacation(editing.value.id, start, end);
-  else await store.addVacation(myPersonId.value, start, end);
+  else await store.addVacation(store.me.value.id, start, end);
   modalOpen.value = false;
 }
 

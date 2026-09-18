@@ -35,6 +35,7 @@
               <span class="flex-1">{{ p.name }}</span>
               <select
                 class="select select-bordered select-sm"
+                :data-testid="`person-group-${p.id}`"
                 :value="p.groupId ?? ''"
                 @change="$emit('set-person-group', { id: p.id, groupId: $event.target.value || null })"
               >
@@ -52,11 +53,22 @@
           </ul>
           <div class="flex gap-2">
             <input data-testid="new-person" class="input input-bordered input-sm flex-1" placeholder="Ny person" v-model="newPerson" />
+            <input data-testid="new-person-email" type="email" class="input input-bordered input-sm"
+                   placeholder="E-post" v-model="newPersonEmail" />
+            <input data-testid="new-person-password" type="password" class="input input-bordered input-sm"
+                   placeholder="Lösenord" v-model="newPersonPassword" />
+            <label class="label cursor-pointer gap-2">
+              <span class="label-text">Administratör</span>
+              <input data-testid="new-person-admin" type="checkbox" class="checkbox checkbox-sm"
+                     v-model="newPersonAdmin" />
+            </label>
             <select data-testid="new-person-group" class="select select-bordered select-sm" v-model="newPersonGroup">
               <option value="">Ogrupperade</option>
               <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
             </select>
-            <button data-testid="add-person" class="btn btn-primary btn-sm" :disabled="!newPerson.trim()" @click="addPerson">
+            <button data-testid="add-person" class="btn btn-primary btn-sm"
+                    :disabled="!newPerson.trim() || !newPersonEmail.trim() || newPersonPassword.length < 8"
+                    @click="addPerson">
               Lägg till
             </button>
           </div>
@@ -77,6 +89,9 @@ const emit = defineEmits([
 
 const newGroup = ref('');
 const newPerson = ref('');
+const newPersonEmail = ref('');
+const newPersonPassword = ref('');
+const newPersonAdmin = ref(false);
 const newPersonGroup = ref('');
 
 function addGroup() {
@@ -84,8 +99,17 @@ function addGroup() {
   newGroup.value = '';
 }
 function addPerson() {
-  emit('add-person', { name: newPerson.value.trim(), groupId: newPersonGroup.value || null });
+  emit('add-person', {
+    name: newPerson.value.trim(),
+    email: newPersonEmail.value.trim(),
+    password: newPersonPassword.value,
+    groupId: newPersonGroup.value || null,
+    isAdmin: newPersonAdmin.value,
+  });
   newPerson.value = '';
+  newPersonEmail.value = '';
+  newPersonPassword.value = '';
+  newPersonAdmin.value = false;
   newPersonGroup.value = '';
 }
 function removePerson(id) {
