@@ -76,15 +76,25 @@ en katalog för statiska Vite-tillgångar.
   **syntetisk "Ogrupperade"-grupp** som alltid visas sist.
 - Helger (lör/sön) får egen bakgrundsfärg på hela kolumnen.
 
-### Öppen ändringsmodell
+### Rättighetsmodell
 
-Vem som helst som är inloggad kan ändra/ta bort vems som helst semester och hantera
-personer/grupper. Detta är avsiktligt — designa inte in behörighetskontroller.
+- En vanlig användare får bara skriva sin egen semester.
+- Allt annat — konton, grupper och gruppmedlemskap — kräver administratör.
+- En administratör får därutöver ändra semestern för vem som helst, så att
+  rättelser går att göra när någon har slutat eller är borta.
+- Vakten körs i `app/Router.php` före varje handler och upprepas i SQL:et som
+  försvar på djupet (`WHERE id = ? AND (user_id = ? OR ? = 1)` i
+  `app/Handlers/VacationHandler.php`); `tests-php/GuardMatrixTest.php` är
+  fjortonradstabellen som bevisar det.
+- Appen är publikt exponerad — försvaga inte den här vakten utan att först
+  ändra specen.
 
 ## Konventioner
 
 - Conventional commits (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`).
-- Svenska i UI-text, commit-meddelanden och kommentarer.
+- UI-text, kodkommentarer och dokumentation på svenska; commit-meddelanden,
+  PR-titlar och PR-beskrivningar på engelska. Det följer användarens globala
+  regel om att allt utåtriktat ska vara på engelska, oavsett repo.
 - Spaces (inte tabbar), CRLF-radslut — utom `.sh`-filer, som ska ha LF
   (se `.gitattributes`).
 - Ren logik (ISO-veckor, kolumngenerering, validering, gruppering) hålls fristående
