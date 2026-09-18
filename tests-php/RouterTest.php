@@ -37,20 +37,20 @@ final class RouterTest extends ApiTestCase
         // Utan nollställning i request() hade den här statusen av misstag
         // fortfarande kunnat vara kvar från föregående anrop. Idag svarar
         // alla vägar alltid, så det här larmar inte ensamt — se
-        // testResetTestStateUsesZeroAsSentinelNotSuccess nedan för det
-        // verkliga regressionsskyddet, som inte förlitar sig på att någon
-        // handler råkar låta bli att svara.
+        // testDispatchThatSkipsRespondingLeavesTheSentinel nedan för det
+        // verkliga regressionsskyddet, som går via request() och inte
+        // förlitar sig på att någon handler råkar låta bli att svara.
         $second = $this->request('GET', '/api/bootstrap');
         $this->assertSame(401, $second['status']);
     }
 
     /**
-     * Det egentliga beviset för nollställningen: sentinelvärdet 0 kan aldrig
-     * förväxlas med en lyckad 2xx-status, och testet failar om
-     * Http::resetTestState() saknas eller om den låter $lastStatus vara kvar
-     * på ett tidigare anrops kod.
+     * Dokumenterar bara vad resetTestState() gör som isolerad metod — den
+     * anropas direkt, aldrig via request(), så den bevisar inte att
+     * request() faktiskt nollställer inför dispatch. Se testet nedan för
+     * det verkliga regressionsskyddet.
      */
-    public function testResetTestStateUsesZeroAsSentinelNotSuccess(): void
+    public function testResetTestStateAssignsTheZeroSentinel(): void
     {
         ob_start();
         Http::error('some_error', 'test', 500);
@@ -60,5 +60,27 @@ final class RouterTest extends ApiTestCase
         Http::resetTestState();
 
         $this->assertSame(0, Http::lastStatus());
+    }
+
+    /**
+     * Det egentliga regressionsskyddet: simulerar en handlerväg som
+     * returnerar utan att svara genom att hoppa över dispatch() i
+     * request() — routingtabellen bär ingen testkrok, seamen ligger i
+     * testriggen. Statusen förgiftas först med ett riktigt svar (404) så
+     * att testet kan skilja "kvarbliven kod" från "nollställd".
+     */
+    public function testDispatchThatSkipsRespondingLeavesTheSentinel(): void
+    {
+        $poisoned = $this->request('GET', '/api/nonsense');
+        $this->assertSame(404, $poisoned['status']);
+
+        $this->skipDispatch = true;
+        try {
+            $res = $this->request('GET', '/api/nonsense');
+        } finally {
+            $this->skipDispatch = false;
+        }
+
+        $this->assertSame(0, $res['status']);
     }
 }

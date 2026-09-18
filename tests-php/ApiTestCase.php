@@ -11,6 +11,12 @@ use App\Router;
  */
 abstract class ApiTestCase extends DbTestCase
 {
+    // Test-seam för regressionstestet av Http::resetTestState(): sätts till
+    // true av ett enda test för att simulera en handlerväg som returnerar
+    // utan att svara. Produktionsroutern har inget motsvarande — det är
+    // medvetet, riktig routing ska aldrig bära på testkrokar.
+    protected bool $skipDispatch = false;
+
     protected function request(
         string $method,
         string $path,
@@ -38,12 +44,26 @@ abstract class ApiTestCase extends DbTestCase
         Http::setTestBody($body === null ? '' : json_encode($body));
 
         ob_start();
-        Router::dispatch($this->pdo, $method, $parts['path']);
+        $this->dispatch($method, $parts['path']);
         $out = ob_get_clean();
 
         return [
             'status' => Http::lastStatus(),
             'json'   => json_decode($out ?: '{}', true) ?? [],
         ];
+    }
+
+    /**
+     * Egen metod bara så att ett enda test kan hoppa över den och simulera
+     * en handler som returnerar utan att svara — utan att routingtabellen
+     * behöver bära på ett testfejkat anrop.
+     */
+    protected function dispatch(string $method, string $path): void
+    {
+        if ($this->skipDispatch) {
+            return;
+        }
+
+        Router::dispatch($this->pdo, $method, $path);
     }
 }
