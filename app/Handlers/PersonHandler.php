@@ -37,6 +37,31 @@ final class PersonHandler
         }
     }
 
+    /**
+     * Backstop mot kapplöpningar: före-kontrollerna (unik e-post, giltig
+     * groupId) täcker det vanliga sekventiella fallet, men två samtidiga
+     * requests kan båda passera kontrollen och krocka i databasen. SQLSTATE
+     * 23000 är en integritetsvillkorskränkning; drivrutinskoden skiljer
+     * dubblett-e-post (1062) från en groupId som inte finns (1452, FK mot
+     * teams). Andra PDO-fel är inte konstaterade orsaker och kastas vidare
+     * oförändrade — front controllern gör dem till 500, vilket är rätt för
+     * fel vi inte kan förklara för användaren.
+     */
+    private function throwForIntegrityViolation(\PDOException $e): never
+    {
+        if ($e->getCode() !== '23000') {
+            throw $e;
+        }
+
+        $driverCode = (int) ($e->errorInfo[1] ?? 0);
+
+        throw match ($driverCode) {
+            1062    => new HttpException('validation_failed', 'E-postadressen används redan.', 422),
+            1452    => new HttpException('validation_failed', 'Gruppen finns inte.', 422),
+            default => new HttpException('validation_failed', 'Ogiltiga uppgifter.', 422),
+        };
+    }
+
     public function create(?array $user, ?string $id = null): void
     {
         $body     = Http::body();
@@ -57,16 +82,26 @@ final class PersonHandler
             return;
         }
 
-        Http::json(
-            Persons::create($this->pdo, $name, $email, $password,
-                $body['groupId'] ?? null, (bool) ($body['isAdmin'] ?? false)),
-            201
-        );
+        try {
+            $person = Persons::create($this->pdo, $name, $email, $password,
+                $body['groupId'] ?? null, (bool) ($body['isAdmin'] ?? false));
+        } catch (\PDOException $e) {
+            $this->throwForIntegrityViolation($e);
+        }
+
+        Http::json($person, 201);
     }
 
     public function update(?array $user, ?string $id = null): void
     {
         $body = Http::body();
+
+        // E-post är inloggningsidentiteten och nyckeln en framtida
+        // Entra ID-koppling kommer att länka konton på, så samma krav som
+        // create() gäller — innan någon SQL körs.
+        if (array_key_exists('email', $body) && !filter_var($body['email'], FILTER_VALIDATE_EMAIL)) {
+            throw new HttpException('validation_failed', 'Ogiltig e-postadress.', 422);
+        }
 
         $this->transactional(function () use ($body, $id): void {
         // array_key_exists, inte isset: isset() är false för null och skulle
@@ -108,7 +143,11 @@ final class PersonHandler
             $stmt = $this->pdo->prepare(
                 'UPDATE users SET ' . implode(', ', $sets) . ' WHERE id = ?'
             );
-            $stmt->execute($params);
+            try {
+                $stmt->execute($params);
+            } catch (\PDOException $e) {
+                $this->throwForIntegrityViolation($e);
+            }
         }
         });
 

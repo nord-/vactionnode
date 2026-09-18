@@ -48,11 +48,15 @@ final class LastAdminConcurrencyTest extends TestCase
             // Utan FOR UPDATE läser B i stället sitt eget snapshot, ser två
             // administratörer, returnerar false direkt — och då blir det här
             // testet rött, vilket är hela poängen med det.
+            // errorInfo[1] === 1205 är MariaDBs "Lock wait timeout exceeded".
+            // Ett bredare catch(PDOException) hade satt $blocked = true för
+            // vilket PDO-fel som helst — fel lösenord, saknad tabell, en
+            // SQL-typo — och testet hade blivit grönt av fel anledning.
             $blocked = false;
             try {
                 Persons::wouldLeaveNoAdmin($b, 'conc2');
-            } catch (PDOException) {
-                $blocked = true;
+            } catch (PDOException $e) {
+                $blocked = ((int) ($e->errorInfo[1] ?? 0)) === 1205;
             }
 
             $this->assertTrue(

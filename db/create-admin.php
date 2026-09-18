@@ -20,6 +20,16 @@ if ($name === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($passwo
     exit(1);
 }
 
-$person = App\Persons::create($pdo, $name, $email, $password, null, true);
+try {
+    $person = App\Persons::create($pdo, $name, $email, $password, null, true);
+} catch (PDOException $e) {
+    // 23000 = integritetsvillkorskränkning. groupId är null här, så den enda
+    // rimliga orsaken är att e-postadressen redan finns i users.email.
+    if ($e->getCode() === '23000') {
+        fwrite(STDERR, "E-postadressen används redan.\n");
+        exit(1);
+    }
+    throw $e;
+}
 
 fwrite(STDOUT, "Administratör skapad: {$person['email']} ({$person['id']})\n");

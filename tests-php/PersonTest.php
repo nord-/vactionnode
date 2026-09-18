@@ -111,4 +111,93 @@ final class PersonTest extends ApiTestCase
         $this->assertSame(0, (int) $this->pdo
             ->query("SELECT COUNT(*) FROM vacations WHERE id = 'p-vac'")->fetchColumn());
     }
+
+    public function testCreateWithDuplicateEmailReturns422(): void
+    {
+        $this->seedAdmin();
+
+        $res = $this->request('POST', '/api/persons', [
+            'name' => 'Duplikat', 'email' => 'p-admin@example.com',
+            'password' => 'hemligt123', 'groupId' => null, 'isAdmin' => false,
+        ], 'p-admin');
+
+        $this->assertSame(422, $res['status']);
+    }
+
+    public function testUpdateWithMalformedEmailReturns422AndLeavesStoredAddressUnchanged(): void
+    {
+        $this->seedAdmin();
+        $this->pdo->exec("INSERT INTO users (id, name, email, password_hash)
+                          VALUES ('p4', 'Dana', 'dana@example.com', 'x')");
+
+        $res = $this->request('PUT', '/api/persons/p4', ['email' => 'inte-en-epostadress'], 'p-admin');
+
+        $this->assertSame(422, $res['status']);
+        $this->assertSame('dana@example.com',
+            $this->pdo->query("SELECT email FROM users WHERE id = 'p4'")->fetchColumn());
+    }
+
+    public function testUpdateWithUnknownGroupIdReturns422(): void
+    {
+        $this->seedAdmin();
+        $this->pdo->exec("INSERT INTO users (id, name, email, password_hash)
+                          VALUES ('p5', 'Eva', 'eva@example.com', 'x')");
+
+        $res = $this->request('PUT', '/api/persons/p5', ['groupId' => 'does-not-exist'], 'p-admin');
+
+        $this->assertSame(422, $res['status']);
+        $this->assertNull(
+            $this->pdo->query("SELECT team_id FROM users WHERE id = 'p5'")->fetchColumn());
+    }
+
+    /**
+     * Testar backstoppet direkt via reflektion, med riktiga PDOException-objekt
+     * som faktiska villkorskränkningar mot databasen (inte fabricerade), så att
+     * mappningen dubblett-e-post -> "E-postadressen används redan." och
+     * okänd groupId -> "Gruppen finns inte." bevisligen håller. Detta är
+     * det enda sättet att pröva just backstoppet snarare än den vanliga
+     * före-kontrollen: create()/update() delar samma anslutning som testet
+     * i ApiTestCase, så en dubblett som testet sätter in innan requesten alltid
+     * syns av före-kontrollen — det är en genuin kapplöpning mellan två
+     * skilda anslutningar (som LastAdminConcurrencyTest) som krävs för att
+     * nå backstoppet via HTTP, och det testas inte här.
+     */
+    public function testIntegrityViolationMapsDuplicateEmailAndUnknownGroupTo422(): void
+    {
+        $this->pdo->exec("INSERT INTO users (id, name, email, password_hash)
+                          VALUES ('p6', 'Filip', 'filip@example.com', 'x')");
+
+        try {
+            $this->pdo->exec("INSERT INTO users (id, name, email, password_hash)
+                              VALUES ('p6dup', 'Filip2', 'filip@example.com', 'x')");
+            $this->fail('Förväntade UNIQUE-krock på e-post.');
+        } catch (\PDOException $duplicateEmail) {
+        }
+
+        try {
+            $this->pdo->exec("UPDATE users SET team_id = 'does-not-exist' WHERE id = 'p6'");
+            $this->fail('Förväntade FK-krock på team_id.');
+        } catch (\PDOException $unknownGroup) {
+        }
+
+        $handler = new \App\Handlers\PersonHandler($this->pdo);
+        $method  = new \ReflectionMethod($handler, 'throwForIntegrityViolation');
+        $method->setAccessible(true);
+
+        try {
+            $method->invoke($handler, $duplicateEmail);
+            $this->fail('Förväntade HttpException.');
+        } catch (\App\HttpException $e) {
+            $this->assertSame(422, $e->status);
+            $this->assertSame('E-postadressen används redan.', $e->getMessage());
+        }
+
+        try {
+            $method->invoke($handler, $unknownGroup);
+            $this->fail('Förväntade HttpException.');
+        } catch (\App\HttpException $e) {
+            $this->assertSame(422, $e->status);
+            $this->assertSame('Gruppen finns inte.', $e->getMessage());
+        }
+    }
 }
