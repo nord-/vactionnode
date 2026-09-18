@@ -88,6 +88,37 @@ final class PersonTest extends ApiTestCase
         $this->assertSame(422, $res['status']);
     }
 
+    /**
+     * Regressionstest för säkerhetsgranskningen: vakten avgjorde med
+     * !$body['isAdmin'] medan skrivningen använde (int) $body['isAdmin'].
+     * "false" som PHP-sträng är truthy, så !$body['isAdmin'] var falskt
+     * ("demoterar inte") medan (int) "false" är 0 — skrivningen degraderade
+     * ändå. Sista administratören kunde alltså degradera sig själv förbi
+     * 422:an. Failar mot koden innan fixen, där guard och write tolkade
+     * värdet olika.
+     */
+    public function testLastAdminCannotDemoteSelfWithStringFalse(): void
+    {
+        $this->seedAdmin();
+
+        $res = $this->request('PUT', '/api/persons/p-admin', ['isAdmin' => 'false'], 'p-admin');
+
+        $this->assertSame(422, $res['status']);
+        $this->assertSame(1,
+            (int) $this->pdo->query("SELECT is_admin FROM users WHERE id = 'p-admin'")->fetchColumn());
+    }
+
+    public function testUpdateWithUnparseableIsAdminReturns422(): void
+    {
+        $this->seedAdmin();
+        $this->pdo->exec("INSERT INTO users (id, name, email, password_hash)
+                          VALUES ('p-unparseable', 'Iris', 'iris@example.com', 'x')");
+
+        $res = $this->request('PUT', '/api/persons/p-unparseable', ['isAdmin' => '0.0'], 'p-admin');
+
+        $this->assertSame(422, $res['status']);
+    }
+
     public function testDemotionSucceedsWhenAnotherAdminExists(): void
     {
         $this->seedAdmin('p-admin');
@@ -135,6 +166,33 @@ final class PersonTest extends ApiTestCase
         $this->assertSame(422, $res['status']);
         $this->assertSame('dana@example.com',
             $this->pdo->query("SELECT email FROM users WHERE id = 'p4'")->fetchColumn());
+    }
+
+    public function testUpdateWithPasswordShorterThan8CharsReturns422(): void
+    {
+        $this->seedAdmin();
+        $this->pdo->exec("INSERT INTO users (id, name, email, password_hash)
+                          VALUES ('p7', 'Greta', 'greta@example.com', 'x')");
+
+        $res = $this->request('PUT', '/api/persons/p7', ['password' => 'kort'], 'p-admin');
+
+        $this->assertSame(422, $res['status']);
+        $this->assertSame('x',
+            $this->pdo->query("SELECT password_hash FROM users WHERE id = 'p7'")->fetchColumn());
+    }
+
+    /** Bevisar att adminpanelens nya lösenordsfält faktiskt är kopplat ända ner. */
+    public function testAdminCanSetNewPasswordViaUpdate(): void
+    {
+        $this->seedAdmin();
+        $this->pdo->exec("INSERT INTO users (id, name, email, password_hash)
+                          VALUES ('p8', 'Hugo', 'hugo@example.com', 'x')");
+
+        $res = $this->request('PUT', '/api/persons/p8', ['password' => 'nyttlosen123'], 'p-admin');
+
+        $this->assertSame(200, $res['status']);
+        $hash = $this->pdo->query("SELECT password_hash FROM users WHERE id = 'p8'")->fetchColumn();
+        $this->assertTrue(password_verify('nyttlosen123', $hash));
     }
 
     public function testUpdateWithUnknownGroupIdReturns422(): void

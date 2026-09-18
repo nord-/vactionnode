@@ -106,7 +106,22 @@ final class PersonHandler
         $this->transactional(function () use ($body, $id): void {
         // array_key_exists, inte isset: isset() är false för null och skulle
         // tyst svälja varje försök att göra en person ogrupperad.
-        $demoting = array_key_exists('isAdmin', $body) && !$body['isAdmin'];
+        //
+        // Normaliseras EN gång och återanvänds för både vakten och skrivningen.
+        // Två separata tolkningar (!$body['isAdmin'] i vakten, (int) $body['isAdmin']
+        // i skrivningen) lät en sträng som "false" glida igenom vakten som "sant"
+        // samtidigt som skrivningen tolkade den som falsk — sista administratören
+        // kunde då degradera sig själv förbi 422:an.
+        $isAdminProvided = array_key_exists('isAdmin', $body);
+        $isAdmin = null;
+        if ($isAdminProvided) {
+            $isAdmin = filter_var($body['isAdmin'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($isAdmin === null) {
+                throw new HttpException('validation_failed', 'isAdmin måste vara sant eller falskt.', 422);
+            }
+        }
+
+        $demoting = $isAdminProvided && !$isAdmin;
         if ($demoting && Persons::wouldLeaveNoAdmin($this->pdo, $id)) {
             throw new HttpException('validation_failed',
                 'Det måste finnas minst en administratör.', 422);
@@ -128,14 +143,19 @@ final class PersonHandler
             $sets[]   = "$column = ?";
             $params[] = match ($field) {
                 'email'   => strtolower(trim((string) $body['email'])),
-                'isAdmin' => (int) $body['isAdmin'],
+                'isAdmin' => (int) $isAdmin,
                 default   => $body[$field],
             };
         }
 
         if (array_key_exists('password', $body) && (string) $body['password'] !== '') {
+            $password = (string) $body['password'];
+            if (strlen($password) < 8) {
+                throw new HttpException('validation_failed',
+                    'Lösenordet måste vara minst 8 tecken.', 422);
+            }
             $sets[]   = 'password_hash = ?';
-            $params[] = password_hash((string) $body['password'], PASSWORD_DEFAULT);
+            $params[] = password_hash($password, PASSWORD_DEFAULT);
         }
 
         if ($sets !== []) {
