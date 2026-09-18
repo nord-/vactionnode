@@ -497,10 +497,10 @@ både frontend och API.
 
 ### Frontend
 
-Nio befintliga testfiler är orörda: `dates`, `grouping`, `validation`,
-`vacationLookup`, `useDefaultRange`, `CalendarGrid`, `CalendarControls`,
-`VacationModal` och `smoke`. Att de förblir gröna genom hela omläggningen är
-kvittot på att datalagret verkligen var isolerat.
+Åtta befintliga testfiler är helt orörda: `dates`, `grouping`, `validation`,
+`vacationLookup`, `CalendarGrid`, `CalendarControls`, `VacationModal` och
+`smoke`. Att de förblir gröna genom hela omläggningen är kvittot på att
+datalagret verkligen var isolerat.
 
 Fyra raderas tillsammans med koden de testar: `githubClient.test.js`,
 `localClient.test.js`, `identity.test.js`, `PersonSelectView.test.js`.
@@ -509,8 +509,13 @@ Fem skrivs om: `auth.test.js`, `dataStore.test.js`, `LoginView.test.js`,
 `useStore.test.js` och `AdminPanel.test.js` — den sista eftersom panelen får
 fälten för e-post, lösenord och adminflagga.
 
-Nio orörda plus fyra raderade plus fem omskrivna är samtliga arton befintliga
-testfiler.
+En utökas utan att befintliga tester ändras: `useDefaultRange.test.js` får
+testfall för `monthRangeToDates()`. `defaultRange()` returnerar månader
+(`2026-09`) medan `/api/bootstrap` vill ha datum (`2026-09-01`), så
+konverteringen måste finnas och täckas.
+
+Åtta orörda plus fyra raderade plus fem omskrivna plus en utökad är samtliga
+arton befintliga testfiler.
 
 Två tillkommer:
 

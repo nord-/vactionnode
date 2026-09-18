@@ -255,8 +255,20 @@ så att den mer specifika regeln vinner:
 *.sh text eol=lf
 ```
 
-Utan den raden får `scripts/deploy.sh` och `db/reset-test-db.sh` CRLF, och bash
-svarar `bad interpreter: /usr/bin/env bash^M`.
+**Regeln räcker inte i sig.** `.gitattributes` normaliserar vid checkin, inte i
+arbetskopian. En `.sh`-fil som skrivs på Windows behåller sina CRLF tills den
+checkas ut på nytt, och `bash db/reset-test-db.sh` svarar då
+`bad interpreter: /usr/bin/env bash^M` trots att regeln finns.
+
+**Skriv därför varje `.sh`-fil med LF-radslut direkt.** Kontrollera efteråt:
+
+```bash
+file db/reset-test-db.sh scripts/deploy.sh
+```
+
+Förväntat: ingen av dem ska rapporteras som `with CRLF line terminators`. Gör de
+det, konvertera med `sed -i 's/
+$//' <fil>`.
 
 - [ ] **Step 4: Composer och PHPUnit**
 
@@ -459,9 +471,15 @@ final class DbTest extends DbTestCase
 {
     public function testUpdateReportsMatchedRowsNotChangedRows(): void
     {
+        // Samma getenv-mönster som DbTestCase. Hårdkodad 127.0.0.1:3307 är
+        // värdens adress; inuti php-containern heter databasen db:3306 och
+        // anslutningen hade fallit på connection refused.
         $pdo = Db::connect([
-            'host' => '127.0.0.1', 'port' => 3307, 'name' => 'vacation_test',
-            'user' => 'root', 'pass' => 'root',
+            'host' => getenv('DB_HOST') ?: 'db',
+            'port' => (int) (getenv('DB_PORT') ?: 3306),
+            'name' => 'vacation_test',
+            'user' => 'root',
+            'pass' => 'root',
         ]);
         // Egen anslutning, alltså utanför testets transaktion. Städningen
         // måste därför ske i finally, annars blir raden kvar och nästa körning
@@ -2099,21 +2117,31 @@ use PHPUnit\Framework\TestCase;
 
 final class LastAdminConcurrencyTest extends TestCase
 {
-    private const DSN = [
-        'host' => '127.0.0.1', 'port' => 3307, 'name' => 'vacation_test',
-        'user' => 'root', 'pass' => 'root',
-    ];
+    /**
+     * Metod, inte konstant: en klasskonstant kan inte anropa getenv().
+     * Inuti php-containern heter databasen db:3306, inte 127.0.0.1:3307.
+     */
+    private static function dsn(): array
+    {
+        return [
+            'host' => getenv('DB_HOST') ?: 'db',
+            'port' => (int) (getenv('DB_PORT') ?: 3306),
+            'name' => 'vacation_test',
+            'user' => 'root',
+            'pass' => 'root',
+        ];
+    }
 
     public function testConcurrentDemotionsCannotBothSucceed(): void
     {
-        $setup = Db::connect(self::DSN);
+        $setup = Db::connect(self::dsn());
         $setup->exec("DELETE FROM users WHERE id IN ('conc1', 'conc2')");
         $setup->exec("INSERT INTO users (id, name, email, password_hash, is_admin) VALUES
             ('conc1', 'A', 'conc1@example.com', 'x', 1),
             ('conc2', 'B', 'conc2@example.com', 'x', 1)");
 
-        $a = Db::connect(self::DSN);
-        $b = Db::connect(self::DSN);
+        $a = Db::connect(self::dsn());
+        $b = Db::connect(self::dsn());
         $b->exec('SET SESSION innodb_lock_wait_timeout = 2');
 
         try {
@@ -3168,7 +3196,14 @@ Förväntat: FAIL — fälten och komponenten saknas.
 
 - [ ] **Step 3: Bygg ut AdminPanel**
 
-Lägg till tre fält i formuläret för ny person i `src/components/AdminPanel.vue`:
+Gruppväljaren per person saknar test-id. Lägg till det på `<select>`-elementet
+i personlistan (rad 36 i nuvarande fil), bredvid `:value` och `@change`:
+
+```vue
+:data-testid="`person-group-${p.id}`"
+```
+
+Lägg sedan till tre fält i formuläret för ny person:
 
 ```vue
 <input data-testid="new-person-email" type="email" class="input input-bordered input-sm"
@@ -3182,7 +3217,8 @@ Lägg till tre fält i formuläret för ny person i `src/components/AdminPanel.v
 </label>
 ```
 
-Ändra emit-anropet till:
+Deklarera `newPersonEmail`, `newPersonPassword` och `newPersonAdmin` som `ref`
+bredvid de befintliga, och ändra emit-anropet till:
 
 ```js
 emit('add-person', {
@@ -3192,6 +3228,13 @@ emit('add-person', {
   groupId: newPersonGroup.value || null,
   isAdmin: newPersonAdmin.value,
 });
+```
+
+Utöka också knappens `:disabled` — e-post och lösenord är obligatoriska nu, och
+servern svarar `422` om de saknas:
+
+```vue
+:disabled="!newPerson.trim() || !newPersonEmail.trim() || newPersonPassword.length < 8"
 ```
 
 - [ ] **Step 4: Skapa ChangePasswordView**
@@ -3401,6 +3444,10 @@ export default defineConfig({
   // Appen får en egen portal med egen document root på Web Station,
   // så den ligger inte längre i en underkatalog som på GitHub Pages.
   base: '/',
+  // public/ är PHP:ns document root i det här projektet, inte Vites mapp för
+  // statiska filer. Utan false kopieras public/api/index.php och .htaccess
+  // rakt in i dist/, och PHP-källkoden hamnar i bygget som deployas.
+  publicDir: false,
   plugins: [vue()],
   server: {
     // Samma origin ur browserns perspektiv — ingen CORS behövs,
