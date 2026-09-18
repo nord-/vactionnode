@@ -52,4 +52,29 @@ final class BootstrapTest extends ApiTestCase
         $this->assertSame([], $res['json']['groups']);
         $this->assertSame([], $res['json']['vacations']);
     }
+
+    /**
+     * ?from[]=x når PHP som en array. Skickad rakt in i execute() hade
+     * det kastat en PDOException och blivit ett 500 i stället för ett
+     * hjälpsamt 422.
+     */
+    public function testArrayQueryParameterReturns422InsteadOf500(): void
+    {
+        $this->pdo->exec("INSERT INTO users (id, name, email, password_hash)
+                          VALUES ('b3', 'Cia', 'cia@example.com', 'x')");
+
+        $res = $this->request('GET', '/api/bootstrap?from[]=x', null, 'b3');
+
+        $this->assertSame(422, $res['status']);
+    }
+
+    public function testMalformedDateStringReturns422(): void
+    {
+        $this->pdo->exec("INSERT INTO users (id, name, email, password_hash)
+                          VALUES ('b4', 'Dag', 'dag@example.com', 'x')");
+
+        $res = $this->request('GET', '/api/bootstrap?from=not-a-date', null, 'b4');
+
+        $this->assertSame(422, $res['status']);
+    }
 }

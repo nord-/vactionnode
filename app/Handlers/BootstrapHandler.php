@@ -2,6 +2,7 @@
 namespace App\Handlers;
 
 use App\Http;
+use App\HttpException;
 use PDO;
 
 final class BootstrapHandler
@@ -10,8 +11,8 @@ final class BootstrapHandler
 
     public function index(?array $user, ?string $id = null): void
     {
-        $from = $_GET['from'] ?? date('Y-m-01');
-        $to   = $_GET['to']   ?? date('Y-m-t');
+        $from = $this->resolveDate($_GET['from'] ?? null, date('Y-m-01'));
+        $to   = $this->resolveDate($_GET['to']   ?? null, date('Y-m-t'));
 
         $groups = $this->pdo
             ->query('SELECT id, name FROM teams ORDER BY name')
@@ -44,5 +45,24 @@ final class BootstrapHandler
             'persons'   => $persons,
             'vacations' => $stmt->fetchAll(),
         ]);
+    }
+
+    /**
+     * ?from[]=x når PHP som en array, inte en sträng — att skicka den vidare
+     * till execute() kastar en PDOException och blir ett obehjälpsamt 500.
+     * Avvisa allt som inte är ett YYYY-MM-DD-datum med 422; ett utelämnat
+     * värde faller tillbaka på standardintervallet precis som tidigare.
+     */
+    private function resolveDate(mixed $value, string $default): string
+    {
+        if ($value === null) {
+            return $default;
+        }
+
+        if (!is_string($value) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) || strtotime($value) === false) {
+            throw new HttpException('validation_failed', 'Ogiltigt datum.', 422);
+        }
+
+        return $value;
     }
 }
