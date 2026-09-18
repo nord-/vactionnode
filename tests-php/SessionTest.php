@@ -51,6 +51,32 @@ final class SessionTest extends ApiTestCase
         $this->assertSame(429, $res['status']);
     }
 
+    /**
+     * Regressionstest: gamla felförsök rensades aldrig bort av en lyckad
+     * inloggning. Fyra fel, en lyckad inloggning och sedan ÄNNU ett fel ger,
+     * utan rensning, fem registrerade felförsök totalt — tillräckligt för att
+     * nästa (korrekta) inloggning ska spärras med 429, trots att kontot
+     * lyckades logga in mellan de två felserierna. Failar mot koden innan
+     * fixen, där login_attempts-raderna blir kvar efter en lyckad
+     * inloggning och det femte felet därför räknas in i samma fönster.
+     */
+    public function testSuccessfulLoginClearsPriorFailedAttempts(): void
+    {
+        $this->seedUser('s6', 'gustav@example.com', 'hemligt123');
+
+        for ($i = 0; $i < 4; $i++) {
+            $this->request('POST', '/api/session', ['email' => 'gustav@example.com', 'password' => 'fel']);
+        }
+        $success = $this->request('POST', '/api/session', ['email' => 'gustav@example.com', 'password' => 'hemligt123']);
+        $this->assertSame(200, $success['status']);
+
+        $this->request('POST', '/api/session', ['email' => 'gustav@example.com', 'password' => 'fel']);
+
+        $again = $this->request('POST', '/api/session', ['email' => 'gustav@example.com', 'password' => 'hemligt123']);
+
+        $this->assertSame(200, $again['status']);
+    }
+
     public function testAccountWithoutPasswordHashRejectsPasswordLogin(): void
     {
         $this->pdo->exec("INSERT INTO users (id, name, email, password_hash)

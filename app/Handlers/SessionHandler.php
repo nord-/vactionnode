@@ -51,6 +51,11 @@ final class SessionHandler
             return;
         }
 
+        // Rensa tidigare felförsök: annars lämnar fyra felstavningar följt av
+        // rätt lösenord kontot ett enda nytt typo från en 15-minuters spärr
+        // resten av fönstret, trots att inloggningen just lyckades.
+        RateLimit::clear($this->pdo, $email);
+
         // Guardad som logout: i CLI (PHPUnit) finns ingen aktiv session, och
         // session_regenerate_id() ger då en PHP-varning som gör testet rött.
         if (session_status() === PHP_SESSION_ACTIVE) {

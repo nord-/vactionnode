@@ -74,4 +74,14 @@ final class RateLimit
     {
         $pdo->exec('DELETE FROM login_attempts WHERE attempted_at < NOW() - INTERVAL 1 DAY');
     }
+
+    /**
+     * Körs efter en lyckad inloggning så att gamla felförsök inte lever
+     * kvar och gör kontot spärrbenäget resten av fönstret.
+     */
+    public static function clear(PDO $pdo, string $email): void
+    {
+        $stmt = $pdo->prepare('DELETE FROM login_attempts WHERE email = ?');
+        $stmt->execute([$email]);
+    }
 }
