@@ -13,11 +13,19 @@ use RuntimeException;
  */
 final class HttpException extends RuntimeException
 {
+    // $code kan inte deklareras med typ eller readonly här: den inbyggda
+    // Exception-klassen äger redan en otypad, icke-readonly $code-egenskap,
+    // och PHP 8.2 tillåter inte att en subklass gör den strikare. Se
+    // fatalen "Cannot redeclare non-readonly property Exception::$code as
+    // readonly" om detta någonsin återinförs.
+    public $code;
+
     public function __construct(
-        public readonly string $code,
+        string $code,
         string $message,
         public readonly int $status
     ) {
         parent::__construct($message);
+        $this->code = $code;
     }
 }
