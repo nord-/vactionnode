@@ -29,7 +29,11 @@
       @remove-person="onRemovePerson"
     />
 
-    <ChangePasswordView @submit="onChangePassword" />
+    <ChangePasswordView
+      :error="changePasswordError"
+      :success="changePasswordSuccess"
+      @submit="onChangePassword"
+    />
 
     <CalendarControls
       :from-month="range.from"
@@ -77,10 +81,19 @@ import CalendarGrid from './components/CalendarGrid.vue';
 import VacationModal from './components/VacationModal.vue';
 
 // onUnauthorized fångar en session som gått ut mitt i arbetet: appen faller
-// tillbaka till inloggningsvyn i stället för att visa ett tomt rutnät.
+// tillbaka till inloggningsvyn i stället för att visa ett tomt rutnät. Även
+// den gamla datan rensas ur store, annars hinner föregående vy blinka till
+// innan reload() vid nästa inloggning hunnit svara.
 const api = createApiClient({
   baseUrl: config.apiBaseUrl,
-  onUnauthorized: () => { user.value = null; },
+  onUnauthorized: () => {
+    user.value = null;
+    store.groups.value = [];
+    store.persons.value = [];
+    store.vacations.value = [];
+    store.me.value = null;
+    store.error.value = null;
+  },
 });
 const store = createStore(createDataStore({ api }));
 
@@ -126,8 +139,18 @@ async function onLogout() {
   user.value = null;
 }
 
-function onChangePassword({ currentPassword, newPassword }) {
-  return changePassword(api, currentPassword, newPassword);
+const changePasswordError = ref(null);
+const changePasswordSuccess = ref(false);
+
+async function onChangePassword({ currentPassword, newPassword }) {
+  changePasswordError.value = null;
+  changePasswordSuccess.value = false;
+  try {
+    await changePassword(api, currentPassword, newPassword);
+    changePasswordSuccess.value = true;
+  } catch (e) {
+    changePasswordError.value = e.message;
+  }
 }
 
 async function onRemovePerson(id) {
