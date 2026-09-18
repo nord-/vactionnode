@@ -17,6 +17,18 @@ final class Http
         return self::$lastStatus;
     }
 
+    /**
+     * Nollställer testtillståndet inför en ny request. $lastStatus sätts till
+     * 0, inte 200 — en handler som glömmer att svara ska synas som ett fel
+     * (0 matchar ingen förväntad statuskod), inte tyst ärva föregående tests
+     * statuskod och se grön ut trots att inget svar producerades.
+     */
+    public static function resetTestState(): void
+    {
+        self::$testBody = null;
+        self::$lastStatus = 0;
+    }
+
     public static function json(mixed $data, int $status = 200): void
     {
         self::$lastStatus = $status;

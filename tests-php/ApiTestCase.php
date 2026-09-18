@@ -31,6 +31,10 @@ abstract class ApiTestCase extends DbTestCase
             parse_str($parts['query'], $_GET);
         }
 
+        // Nollställ innan dispatch: annars kan Http::lastStatus() av misstag
+        // rapportera FÖREGÅENDE tests statuskod om den här requesten går en
+        // väg som glömmer att svara.
+        Http::resetTestState();
         Http::setTestBody($body === null ? '' : json_encode($body));
 
         ob_start();
