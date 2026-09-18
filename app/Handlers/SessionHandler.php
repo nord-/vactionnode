@@ -2,6 +2,7 @@
 namespace App\Handlers;
 
 use App\Http;
+use App\RateLimit;
 use PDO;
 
 final class SessionHandler
@@ -10,21 +11,82 @@ final class SessionHandler
 
     public function login(?array $user, ?string $id = null): void
     {
-        Http::error('not_implemented', 'Inte implementerad än.', 501);
+        $body     = Http::body();
+        $email    = strtolower(trim((string) ($body['email'] ?? '')));
+        $password = (string) ($body['password'] ?? '');
+        $config   = require dirname(__DIR__, 2) . '/config.php';
+        $ip       = RateLimit::clientIp($config, $_SERVER);
+
+        if (RateLimit::tooManyAttempts($this->pdo, $email, $ip)) {
+            Http::error('too_many_attempts', 'För många försök. Vänta en stund.', 429);
+            return;
+        }
+
+        $stmt = $this->pdo->prepare(
+            'SELECT id, name, email, team_id AS groupId, is_admin AS isAdmin, password_hash
+             FROM users WHERE email = ?'
+        );
+        $stmt->execute([$email]);
+        $row = $stmt->fetch();
+
+        // Samma svar oavsett om kontot saknas, saknar lösenord eller har fel
+        // lösenord — annars blir endpointen en kontolista.
+        if ($row === false || $row['password_hash'] === null
+            || !password_verify($password, $row['password_hash'])) {
+            RateLimit::record($this->pdo, $email, $ip);
+            Http::error('invalid_credentials', 'Fel e-post eller lösenord.', 401);
+            return;
+        }
+
+        // Guardad som logout: i CLI (PHPUnit) finns ingen aktiv session, och
+        // session_regenerate_id() ger då en PHP-varning som gör testet rött.
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_regenerate_id(true);
+        }
+        $_SESSION['user_id'] = $row['id'];
+
+        unset($row['password_hash']);
+        $row['isAdmin'] = (bool) $row['isAdmin'];
+        Http::json($row);
     }
 
     public function me(?array $user, ?string $id = null): void
     {
-        Http::error('not_implemented', 'Inte implementerad än.', 501);
+        Http::json($user);
     }
 
     public function logout(?array $user, ?string $id = null): void
     {
-        Http::error('not_implemented', 'Inte implementerad än.', 501);
+        $_SESSION = [];
+        if (PHP_SAPI !== 'cli') {
+            session_destroy();
+        }
+        Http::json(['ok' => true]);
     }
 
     public function changePassword(?array $user, ?string $id = null): void
     {
-        Http::error('not_implemented', 'Inte implementerad än.', 501);
+        $body    = Http::body();
+        $current = (string) ($body['currentPassword'] ?? '');
+        $new     = (string) ($body['newPassword'] ?? '');
+
+        if (strlen($new) < 8) {
+            Http::error('validation_failed', 'Nytt lösenord måste vara minst 8 tecken.', 422);
+            return;
+        }
+
+        $stmt = $this->pdo->prepare('SELECT password_hash FROM users WHERE id = ?');
+        $stmt->execute([$user['id']]);
+        $hash = $stmt->fetchColumn();
+
+        if ($hash === null || !password_verify($current, $hash)) {
+            Http::error('validation_failed', 'Nuvarande lösenord stämmer inte.', 422);
+            return;
+        }
+
+        $stmt = $this->pdo->prepare('UPDATE users SET password_hash = ? WHERE id = ?');
+        $stmt->execute([password_hash($new, PASSWORD_DEFAULT), $user['id']]);
+
+        Http::json(['ok' => true]);
     }
 }
