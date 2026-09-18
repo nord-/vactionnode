@@ -67,4 +67,26 @@ it('tar bort raden lokalt vid radering', async () => {
   expect(store.vacations.value).toHaveLength(0);
   expect(dataStore.bootstrap).toHaveBeenCalledTimes(1);
   });
+
+  it('behåller personId vid uppdatering trots att servern inte skickar det tillbaka', async () => {
+    const dataStore = fakeDataStore({
+      bootstrap: vi.fn().mockResolvedValue({
+        me: { id: 'p1' }, groups: [], persons: [],
+        vacations: [{ id: 'v1', personId: 'p1', start: '2026-06-16', end: '2026-06-20' }],
+      }),
+      // VacationHandler::update returnerar {id, start, end} utan personId.
+      updateVacation: vi.fn().mockResolvedValue(
+        { id: 'v1', start: '2026-06-17', end: '2026-06-21' }
+      ),
+    });
+    const store = createStore(dataStore);
+    await store.refresh('2026-06-01', '2026-06-30');
+
+    await store.updateVacation('v1', '2026-06-17', '2026-06-21');
+
+    const row = store.vacations.value.find((v) => v.id === 'v1');
+    expect(row.personId).toBe('p1');
+    expect(row.start).toBe('2026-06-17');
+    expect(row.end).toBe('2026-06-21');
+  });
 });
