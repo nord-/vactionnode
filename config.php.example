@@ -1,0 +1,21 @@
+<?php
+// Kopiera till config.php och fyll i. config.php är gitignorerad.
+return [
+    'db' => [
+        'host' => '127.0.0.1',
+        'port' => 3307,
+        'name' => 'vacation',
+        'user' => 'vacation',
+        'pass' => '',
+    ],
+    // Tomma listan stänger av per-IP-spärren. Fyll i reverse-proxyns
+    // adress för att aktivera den — se spec §4.
+    'trusted_proxies' => [],
+
+    // Sessionscookiens Secure-flagga. ALLTID true i produktion. Sätts till
+    // false enbart i den lokala Docker-miljön, som kör ren HTTP — annars
+    // sätter browsern aldrig cookien och inget flöde går att testa.
+    // $_SERVER['HTTPS'] duger inte som automatik: den är tom bakom DSM:s
+    // reverse proxy, vilket hade stängt av Secure i produktion.
+    'cookie_secure' => true,
+];
