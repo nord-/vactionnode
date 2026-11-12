@@ -1,5 +1,6 @@
-/* @import måste stå före övriga regler enligt CSS-spec. */
-@import '@mdi/font/css/materialdesignicons.css';
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+/* Tailwind 4 konfigureras i CSS, inte i tailwind.config.js. Tailwind hittar
+   själv vilka filer som ska skannas (alla som inte är gitignorerade); styrs
+   vid behov med @source. daisyUI laddas som plugin härifrån. */
+@plugin 'daisyui';
