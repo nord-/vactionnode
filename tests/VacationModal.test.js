@@ -1,8 +1,12 @@
-import { describe, it, expect } from 'vitest';
-import { mount, flushPromises } from '@vue/test-utils';
+import { describe, it, expect, afterEach } from 'vitest';
+import { mount, flushPromises, enableAutoUnmount } from '@vue/test-utils';
 import VacationModal from '../src/components/VacationModal.vue';
 import { typeDate } from './helpers/dateField.js';
 import DateField from '../src/components/DateField.vue';
+
+// Tester som monteras i document.body lämnar annars datumväljarens popup kvar
+// där, och den påverkar nästa tests Escape-hantering.
+enableAutoUnmount(afterEach);
 
 function mountModal(extra = {}, options = {}) {
   return mount(VacationModal, {
@@ -107,6 +111,22 @@ describe('VacationModal', () => {
 
     expect(w.text()).not.toContain('Ogiltigt datum');
     w.unmount();
+  });
+
+  it('kopplar etiketterna till datumfälten', () => {
+    const w = mountModal();
+    for (const [testid, text] of [['start', 'Startdatum'], ['end', 'Slutdatum']]) {
+      const input = w.find(`[data-testid="${testid}"] input`);
+      const label = w.find(`label[for="${input.attributes('id')}"]`);
+      expect(label.exists(), testid).toBe(true);
+      expect(label.text()).toBe(text);
+    }
+  });
+
+  it('stänger med Escape när ingen datumväljare är öppen', async () => {
+    const w = mountModal();
+    await w.find('dialog').trigger('keydown', { key: 'Escape' });
+    expect(w.emitted('update:modelValue')[0][0]).toBe(false);
   });
 
   it('visar Ta bort endast vid redigering och emittar delete', async () => {

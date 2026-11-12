@@ -4,6 +4,7 @@
       <select
         v-if="part === 'month'"
         class="select select-sm w-auto"
+        :aria-label="label ? `${label}, månad` : undefined"
         :value="month"
         @change="emitMonth($event.target.value, year)"
       >
@@ -15,6 +16,7 @@
         min="1000"
         max="9999"
         class="input input-sm w-24"
+        :aria-label="label ? `${label}, år` : undefined"
         :value="year"
         @input="emitMonth(month, $event.target.value)"
         @change="resetIncompleteYear($event.target)"
@@ -33,6 +35,8 @@ import { userLocale } from '../lib/locale.js';
 const props = defineProps({
   modelValue: { type: String, required: true },
   locale: { type: String, default: () => userLocale() },
+  // Fältets etikett; ger månadslistan och årsrutan var sitt tillgängligt namn.
+  label: { type: String, default: '' },
 });
 const emit = defineEmits(['update:modelValue']);
 

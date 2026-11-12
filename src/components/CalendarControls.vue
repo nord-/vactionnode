@@ -2,11 +2,11 @@
   <div class="flex flex-wrap items-end gap-3 mb-4">
     <div class="flex flex-col gap-1">
       <span class="text-sm">Från månad</span>
-      <MonthField :model-value="fromMonth" @update:model-value="onRangeChange('from', $event)" />
+      <MonthField label="Från månad" :model-value="fromMonth" @update:model-value="onRangeChange('from', $event)" />
     </div>
     <div class="flex flex-col gap-1">
       <span class="text-sm">Till månad</span>
-      <MonthField :model-value="toMonth" @update:model-value="onRangeChange('to', $event)" />
+      <MonthField label="Till månad" :model-value="toMonth" @update:model-value="onRangeChange('to', $event)" />
     </div>
     <label class="flex flex-col gap-1">
       <span class="text-sm">Grupp</span>

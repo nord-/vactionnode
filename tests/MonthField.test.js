@@ -51,6 +51,13 @@ describe('MonthField', () => {
     expect(w.emitted('update:modelValue')).toBeUndefined();
   });
 
+  it('ger månads- och årsfältet namn från etiketten', () => {
+    const w = mountField({ label: 'Från månad' });
+
+    expect(w.find('select').attributes('aria-label')).toBe('Från månad, månad');
+    expect(w.find('input[type="number"]').attributes('aria-label')).toBe('Från månad, år');
+  });
+
   it('ställer året före månaden där språket gör det', () => {
     const w = mountField({ locale: 'ja-JP' });
     const controls = w.findAll('select, input[type="number"]');

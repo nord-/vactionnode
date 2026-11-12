@@ -80,6 +80,26 @@ describe('ChangePasswordModal', () => {
     expect(wrapper.emitted('update:modelValue')[0][0]).toBe(false);
   });
 
+  it('ger lösenordsfälten namn och rätt autocomplete', () => {
+    const wrapper = mountOpen();
+    const attrs = (id) => wrapper.find(`[data-testid="${id}"]`).attributes();
+
+    expect(attrs('current')['aria-label']).toBe('Nuvarande lösenord');
+    expect(attrs('current').autocomplete).toBe('current-password');
+    expect(attrs('new')['aria-label']).toBe('Nytt lösenord');
+    expect(attrs('new').autocomplete).toBe('new-password');
+    expect(attrs('confirm')['aria-label']).toBe('Bekräfta nytt lösenord');
+    expect(attrs('confirm').autocomplete).toBe('new-password');
+  });
+
+  it('stänger med Escape', async () => {
+    const wrapper = mountOpen();
+
+    await wrapper.find('[data-testid="current"]').trigger('keydown', { key: 'Escape' });
+
+    expect(wrapper.emitted('update:modelValue')[0][0]).toBe(false);
+  });
+
   it('nollställer fält och felmeddelande när den öppnas igen', async () => {
     const wrapper = mountOpen();
 
