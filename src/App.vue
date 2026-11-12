@@ -84,7 +84,9 @@
             :from-month="range.from"
             :to-month="range.to"
             :group-filter-id="groupFilterId"
+            :can-add-for="canWriteFor"
             @edit-vacation="openEditVacation"
+            @add-vacation="openNewVacation"
           />
         </div>
       </div>
@@ -93,6 +95,7 @@
         v-model="modalOpen"
         :vacation="editing"
         :person-name="editingName"
+        :start-date="newStartDate"
         :error="vacationError"
         @save="onSaveVacation"
         @delete="onDeleteVacation"
@@ -136,6 +139,14 @@ function clearSessionState() {
   store.me.value = null;
   store.error.value = null;
   changePasswordOpen.value = false;
+  // Semesterdialogen ligger i den inloggade vyn och monteras om vid nästa
+  // inloggning: utan nollställning öppnades förra användarens dialog igen,
+  // t.ex. "Lägg till semester — Bo" för en icke-admin efter en 401.
+  modalOpen.value = false;
+  editing.value = null;
+  newPersonId.value = null;
+  newStartDate.value = '';
+  vacationError.value = null;
 }
 
 // onUnauthorized fångar en session som gått ut mitt i arbetet: appen faller
@@ -179,14 +190,24 @@ const groupFilterId = ref('all');
 
 const modalOpen = ref(false);
 const editing = ref(null);
+// Vem en ny semester skrivs åt och vilken dag den börjar; satt när
+// modalen öppnas för en ny semester (via knappen eller en klickad dag).
+const newPersonId = ref(null);
+const newStartDate = ref('');
 
-// Namnet i modalens rubrik följer semestern som redigeras, inte den
-// inloggade: en administratör kan ändra någon annans semester och måste
-// se vems den är. En ny semester skrivs alltid åt den inloggade.
+// Samma regel som servern: en vanlig användare skriver bara sin egen
+// semester, en administratör allas. Servern svarar annars 403, så en dialog
+// som bara kan sluta i det felet öppnas inte.
+function canWriteFor(personId) {
+  return isAdmin.value || personId === store.me.value?.id;
+}
+
+// Namnet i modalens rubrik följer den vars semester det gäller, inte den
+// inloggade: en administratör kan skriva någon annans semester och måste
+// se vems den är.
 const editingName = computed(() => {
-  const owner = editing.value
-    ? store.persons.value.find((p) => p.id === editing.value.personId)
-    : null;
+  const ownerId = editing.value ? editing.value.personId : newPersonId.value;
+  const owner = store.persons.value.find((p) => p.id === ownerId);
   return owner?.name ?? myName.value;
 });
 
@@ -267,15 +288,19 @@ async function onSetPassword({ id, password }) {
 
 const vacationError = ref(null);
 
-function openNewVacation() {
+// Knappen "Lägg till semester" skickar inget: då gäller det den inloggade
+// och inget förvalt datum. En klickad dag i kalendern skickar person och dag.
+function openNewVacation({ personId, date } = {}) {
+  const ownerId = personId ?? store.me.value?.id;
+  if (!canWriteFor(ownerId)) return;
   editing.value = null;
+  newPersonId.value = ownerId;
+  newStartDate.value = date ?? '';
   vacationError.value = null;
   modalOpen.value = true;
 }
 function openEditVacation({ vacation }) {
-  // Servern svarar 403 på en annans semester för vanliga användare; öppna
-  // inte en dialog som bara kan sluta i det felet.
-  if (!isAdmin.value && vacation.personId !== store.me.value?.id) return;
+  if (!canWriteFor(vacation.personId)) return;
   editing.value = vacation;
   vacationError.value = null;
   modalOpen.value = true;
@@ -290,7 +315,7 @@ async function onSaveVacation({ start, end }) {
   vacationError.value = null;
   try {
     if (editing.value) await store.updateVacation(editing.value.id, start, end);
-    else await store.addVacation(store.me.value.id, start, end);
+    else await store.addVacation(newPersonId.value, start, end);
     modalOpen.value = false;
   } catch (e) {
     vacationError.value = e.message || 'Kunde inte spara semestern.';

@@ -89,6 +89,111 @@ describe('App – sparfel på huvudflödet', () => {
     expect(heading).not.toContain('Anna');
   });
 
+  async function mountWithColleague(me, onPost) {
+    const colleague = { id: 'p2', name: 'Bo', email: 'bo@example.com', groupId: null, isAdmin: false };
+
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const method = options.method ?? 'GET';
+      if (url.includes('/api/session') && method === 'GET') return jsonResponse(me);
+      if (url.includes('/api/bootstrap')) {
+        return jsonResponse({ me, groups: [], persons: [me, colleague], vacations: [] });
+      }
+      if (url.includes('/api/vacations') && method === 'POST') {
+        const body = JSON.parse(options.body);
+        onPost?.(body);
+        return jsonResponse({ id: 'v9', ...body });
+      }
+      return jsonResponse({}, 200);
+    }));
+
+    const wrapper = mount(App);
+    await flushPromises();
+    return wrapper;
+  }
+
+  // Raderna sorteras efter namn inom gruppen: Anna (p1) först, Bo (p2) sedan.
+  function emptyCell(wrapper, rowIndex) {
+    return wrapper.findAll('tbody tr').filter((tr) => tr.find('td').exists())[rowIndex]
+      .find('td[data-vacation="false"]');
+  }
+
+  it('öppnar Lägg till semester på den klickade dagen i den egna raden', async () => {
+    const user = { id: 'p1', name: 'Anna', email: 'anna@example.com', groupId: null, isAdmin: false };
+    const posted = [];
+    const wrapper = await mountWithColleague(user, (body) => posted.push(body));
+
+    await emptyCell(wrapper, 0).trigger('click');
+    await flushPromises();
+    expect(wrapper.find('dialog h3').text()).toContain('Lägg till semester — Anna');
+
+    await wrapper.find('[data-testid="save"]').trigger('click');
+    await flushPromises();
+    expect(posted).toEqual([{ personId: 'p1', start: firstOfThisMonth(), end: firstOfThisMonth() }]);
+  });
+
+  it('låter en administratör lägga till semester åt någon annan genom att klicka i dennes rad', async () => {
+    const admin = { id: 'p1', name: 'Anna', email: 'anna@example.com', groupId: null, isAdmin: true };
+    const posted = [];
+    const wrapper = await mountWithColleague(admin, (body) => posted.push(body));
+
+    await emptyCell(wrapper, 1).trigger('click');
+    await flushPromises();
+    expect(wrapper.find('dialog h3').text()).toContain('Lägg till semester — Bo');
+
+    await wrapper.find('[data-testid="save"]').trigger('click');
+    await flushPromises();
+    expect(posted[0].personId).toBe('p2');
+  });
+
+  it('öppnar inte förra användarens semesterdialog efter 401 och ny inloggning', async () => {
+    const admin = { id: 'p1', name: 'Anna', email: 'anna@example.com', groupId: null, isAdmin: true };
+    const bo = { id: 'p2', name: 'Bo', email: 'bo@example.com', groupId: null, isAdmin: false };
+    const carl = { id: 'p3', name: 'Carl', email: 'carl@example.com', groupId: null, isAdmin: false };
+    let me = admin;
+
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const method = options.method ?? 'GET';
+      if (url.includes('/api/session') && method === 'GET') return jsonResponse(me);
+      if (url.includes('/api/session') && method === 'POST') {
+        me = carl;
+        return jsonResponse(carl);
+      }
+      if (url.includes('/api/bootstrap')) {
+        return jsonResponse({ me, groups: [], persons: [admin, bo, carl], vacations: [] });
+      }
+      // Sessionen har gått ut när administratören sparar.
+      if (url.includes('/api/vacations') && method === 'POST') {
+        return jsonResponse({ error: { code: 'unauthenticated', message: 'Inte inloggad.' } }, 401);
+      }
+      return jsonResponse({}, 200);
+    }));
+
+    const wrapper = mount(App);
+    await flushPromises();
+    await emptyCell(wrapper, 1).trigger('click');
+    await flushPromises();
+    await wrapper.find('[data-testid="save"]').trigger('click');
+    await flushPromises();
+
+    await wrapper.find('[data-testid="email"]').setValue('carl@example.com');
+    await wrapper.find('[data-testid="password"]').setValue('hemligt123');
+    await wrapper.find('form').trigger('submit');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="add-vacation"]').exists()).toBe(true);
+    expect(wrapper.find('dialog').attributes('open')).toBeUndefined();
+  });
+
+  it('öppnar ingenting när en vanlig användare klickar i någon annans rad', async () => {
+    const user = { id: 'p1', name: 'Anna', email: 'anna@example.com', groupId: null, isAdmin: false };
+    const wrapper = await mountWithColleague(user);
+
+    await emptyCell(wrapper, 1).trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('dialog').attributes('open')).toBeUndefined();
+  });
+
   it('öppnar inte redigeringsdialogen för en annans semester när man inte är administratör', async () => {
     const user = { id: 'p1', name: 'Anna', email: 'anna@example.com', groupId: null, isAdmin: false };
 

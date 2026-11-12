@@ -31,6 +31,27 @@ describe('CalendarGrid', () => {
     await w.find('[data-vacation="true"]').trigger('click');
     expect(w.emitted('edit-vacation')[0][0].vacation.id).toBe('v1');
   });
+  it('emittar add-vacation med person och dag vid klick på en tom cell', async () => {
+    const w = mountGrid({ canAddFor: (id) => id === 'p1' });
+    const empty = w.findAll('[data-vacation="false"]')[0];
+    expect(empty.classes()).toContain('cursor-pointer');
+    await empty.trigger('click');
+    expect(w.emitted('add-vacation')[0][0]).toEqual({ personId: 'p1', date: '2025-06-01' });
+  });
+  it('emittar inget vid klick på en tom cell som inte får läggas till', async () => {
+    const w = mountGrid({ canAddFor: () => false });
+    const empty = w.findAll('[data-vacation="false"]')[0];
+    expect(empty.classes()).not.toContain('cursor-pointer');
+    await empty.trigger('click');
+    expect(w.emitted('add-vacation')).toBeUndefined();
+  });
+  it('visar pekarmarkör på en semestercell bara när den får öppnas', () => {
+    const allowed = mountGrid({ canAddFor: () => true });
+    const denied = mountGrid({ canAddFor: () => false });
+    expect(allowed.find('[data-vacation="true"]').classes()).toContain('cursor-pointer');
+    expect(denied.find('[data-vacation="true"]').classes()).not.toContain('cursor-pointer');
+    expect(denied.find('[data-vacation="true"]').classes()).toContain('bg-success');
+  });
   it('filtrerar på grupp', () => {
     const w = mountGrid({
       groups: [{ id: 'g1', name: 'Team A' }, { id: 'g2', name: 'Team B' }],

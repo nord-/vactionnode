@@ -58,7 +58,7 @@
             <td
               v-for="col in columns"
               :key="col.iso"
-              class="border-l border-base-200 h-8 cursor-default"
+              class="border-l border-base-200 h-8"
               :class="cellClass(person.id, col)"
               :data-vacation="isVacation(person.id, col.iso) ? 'true' : 'false'"
               @click="onCellClick(person.id, col.iso)"
@@ -83,9 +83,13 @@ const props = defineProps({
   fromMonth: { type: String, required: true },
   toMonth: { type: String, required: true },
   groupFilterId: { type: [String, null], default: 'all' },
+  // Om personens rad får skrivas: en tom dag lägger då till semester och en
+  // semestercell öppnar den. Rättighetsregeln ägs av föräldern; rutnätet
+  // bara frågar, och visar pekarmarkör bara där ett klick gör något.
+  canAddFor: { type: Function, default: () => false },
 });
 
-const emit = defineEmits(['edit-vacation']);
+const emit = defineEmits(['edit-vacation', 'add-vacation']);
 
 const columns = computed(() => generateColumns(props.fromMonth, props.toMonth));
 
@@ -137,12 +141,17 @@ function isVacation(personId, iso) {
 }
 
 function cellClass(personId, col) {
-  if (isVacation(personId, col.iso)) return 'bg-success cursor-pointer';
-  return col.isWeekend ? 'bg-base-300' : '';
+  if (isVacation(personId, col.iso)) {
+    return props.canAddFor(personId) ? 'bg-success cursor-pointer' : 'bg-success';
+  }
+  const classes = [col.isWeekend ? 'bg-base-300' : ''];
+  if (props.canAddFor(personId)) classes.push('cursor-pointer hover:bg-primary/20');
+  return classes;
 }
 
 function onCellClick(personId, iso) {
   const vacation = vacationForCell(props.vacations, personId, iso);
   if (vacation) emit('edit-vacation', { vacation });
+  else if (props.canAddFor(personId)) emit('add-vacation', { personId, date: iso });
 }
 </script>
