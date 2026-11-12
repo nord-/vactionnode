@@ -85,6 +85,47 @@ describe('DateField', () => {
     expect(text).toContain('vmåtiontofrlösö');
   });
 
+  // v-model kopplat som i en förälder: varje emit skrivs tillbaka som prop.
+  function mountBound(props = {}) {
+    const w = mount(DateField, {
+      props: {
+        locale: 'sv-SE',
+        ...props,
+        'onUpdate:modelValue': (value) => w.setProps({ modelValue: value }),
+      },
+      attrs: { 'data-testid': 'date' },
+      attachTo: document.body,
+    });
+    return w;
+  }
+
+  it('behåller texten medan man skriver om ett ifyllt datum', async () => {
+    const w = mountBound({ modelValue: '2026-06-20', min: '2026-06-16' });
+    const el = input(w);
+
+    await el.trigger('focus');
+    for (const text of ['2026-06-2', '2026-06-', '2026-06-1']) {
+      await el.setValue(text);
+      await flushPromises();
+      expect(el.element.value).toBe(text);
+    }
+  });
+
+  it('tömmer värdet först när fältet lämnas med en ogiltig text', async () => {
+    const w = mountBound({ modelValue: '2026-06-20' });
+    const el = input(w);
+
+    await el.trigger('focus');
+    await el.setValue('2026-06-');
+    await flushPromises();
+    expect(w.props('modelValue')).toBe('2026-06-20');
+
+    await el.trigger('keydown', { key: 'Escape' });
+    await flushPromises();
+    expect(w.props('modelValue')).toBe('');
+    expect(w.text()).toContain('Ogiltigt datum');
+  });
+
   it('visar ett nytt värde som kommer utifrån', async () => {
     const w = mountField({ modelValue: '2026-06-16' });
 

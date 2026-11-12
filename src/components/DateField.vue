@@ -9,18 +9,20 @@
       :week-numbers="{ type: 'iso', label: 'v' }"
       :time-config="{ enableTimePicker: false }"
       :placeholder="placeholder"
+      :min-date="minDate"
+      :start-date="minDate"
       auto-apply
       teleport
       @text-input="onTextInput"
       @blur="onBlur"
       @closed="onBlur"
     />
-    <p v-if="invalid" class="text-error text-sm">Ogiltigt datum.</p>
+    <p v-if="error" class="text-error text-sm">{{ error }}</p>
   </div>
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { VueDatePicker } from '@vuepic/vue-datepicker';
 import '@vuepic/vue-datepicker/dist/main.css';
 import { formatDate, parseDate } from '../lib/dateFormat.js';
@@ -33,6 +35,8 @@ defineOptions({ inheritAttrs: false });
 const props = defineProps({
   modelValue: { type: String, default: '' },
   locale: { type: String, default: () => userLocale() },
+  // Tidigaste valbara dag (ISO); kalendern öppnas också på den månaden.
+  min: { type: String, default: '' },
 });
 const emit = defineEmits(['update:modelValue']);
 
@@ -57,8 +61,15 @@ function fromIso(iso) {
 // texten ("16.6.2026") i stället för ISO.
 const model = computed({
   get: () => (props.modelValue ? fromIso(props.modelValue) : null),
-  set: (value) => emit('update:modelValue', value ? toIso(value) : ''),
+  set: (value) => {
+    // Texten glöms först när ett giltigt datum valts: när biblioteket själv
+    // tömmer fältet ska felet för den avvisade texten ligga kvar.
+    if (value) lastText.value = '';
+    emit('update:modelValue', value ? toIso(value) : '');
+  },
 });
+
+const minDate = computed(() => (props.min ? fromIso(props.min) : undefined));
 
 function formatInput(date) {
   return formatDate(toIso(date), props.locale);
@@ -75,19 +86,54 @@ function parseInput(value) {
 const today = new Date();
 const placeholder = computed(() => `t.ex. ${formatInput(today)}`);
 
-// Felmeddelandet visas först när fältet lämnas, inte mitt i inmatningen.
+// Texten användaren senast skrev, tills biblioteket godtar ett värde.
 const lastText = ref('');
 const touched = ref(false);
-const invalid = computed(() => touched.value
-  && lastText.value.trim() !== ''
-  && parseDate(lastText.value, props.locale) === null);
+
+// Varför den skrivna texten inte kan användas, eller null om den kan det.
+// immediate: ett datum före min tömmer biblioteket själv ur fältet, så det
+// måste förklaras direkt; annars försvinner datumet i tysthet.
+function textProblem(text) {
+  if (text.trim() === '') return null;
+  const iso = parseDate(text, props.locale);
+  if (!iso) return { message: 'Ogiltigt datum.', immediate: false };
+  if (props.min && iso < props.min) {
+    return {
+      message: `Datumet kan inte vara före ${formatDate(props.min, props.locale)}.`,
+      immediate: true,
+    };
+  }
+  return null;
+}
+
+// Ett giltigt värde utifrån (annan semester, slutdatum som följer start)
+// ersätter den text som felet gällde.
+watch(
+  () => props.modelValue,
+  (value) => {
+    if (value) lastText.value = '';
+  },
+);
+
+// Ett ogiltigt datum visas först när fältet lämnas, inte mitt i inmatningen.
+const error = computed(() => {
+  const problem = textProblem(lastText.value);
+  return problem && (problem.immediate || touched.value) ? problem.message : null;
+});
 
 function onTextInput(event) {
   lastText.value = typeof event === 'string' ? event : event.target.value;
   touched.value = false;
 }
 
+// Biblioteket behåller sitt gamla värde när texten avvisas, medan fältet
+// visar den nya texten. Värdet töms därför när fältet lämnas, så att
+// föräldern inte sparar något annat än det som står i fältet. Det görs inte
+// medan man skriver: ett tomt värde utifrån får biblioteket att tömma
+// textfältet, och då försvann det användaren höll på att skriva. Spara
+// lämnar fältet innan klicket når knappen, så inget gammalt värde sparas.
 function onBlur() {
   touched.value = true;
+  if (textProblem(lastText.value)) emit('update:modelValue', '');
 }
 </script>

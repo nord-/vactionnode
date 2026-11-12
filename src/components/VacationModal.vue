@@ -7,13 +7,13 @@
       <div class="flex flex-col gap-2">
         <div class="flex flex-col gap-1">
           <span class="text-sm">Startdatum</span>
-          <DateField data-testid="start" v-model="start" />
+          <DateField :key="`start-${fillCount}`" data-testid="start" v-model="start" />
         </div>
         <div class="flex flex-col gap-1">
           <span class="text-sm">Slutdatum</span>
-          <DateField data-testid="end" v-model="end" />
+          <DateField :key="`end-${fillCount}`" data-testid="end" v-model="end" :min="start" />
         </div>
-        <p v-if="!isValid" class="text-error text-sm">
+        <p v-if="endBeforeStart" class="text-error text-sm">
           Slutdatum måste vara samma som eller efter startdatum.
         </p>
         <p v-if="error" data-testid="vacation-error" class="text-error text-sm">{{ error }}</p>
@@ -51,21 +51,45 @@ const props = defineProps({
   vacation: { type: Object, default: null },
   personName: { type: String, default: '' },
   error: { type: String, default: null },
+  // Förvald dag för en ny semester, t.ex. den dag som klickades i kalendern.
+  startDate: { type: String, default: '' },
 });
 
 defineEmits(['save', 'delete', 'update:modelValue']);
 
-const start = ref(props.vacation?.start ?? '');
-const end = ref(props.vacation?.end ?? '');
+const start = ref('');
+const end = ref('');
+// Byter nyckel på datumfälten vid varje ifyllning, så att de monteras om och
+// glömmer skriven text och felmeddelanden från förra öppningen.
+const fillCount = ref(0);
 
-// Synka fälten när en annan semester öppnas.
+// Fälten fylls i varje gång modalen öppnas och när en annan semester väljs:
+// med semesterns datum vid redigering, annars med startDate (en dag) eller
+// tomt. Annars låg förra öppningens inmatning kvar.
+function fill() {
+  start.value = props.vacation?.start ?? props.startDate;
+  end.value = props.vacation?.end ?? props.startDate;
+  fillCount.value++;
+}
+fill();
+
 watch(
-  () => props.vacation,
-  (v) => {
-    start.value = v?.start ?? '';
-    end.value = v?.end ?? '';
+  [() => props.modelValue, () => props.vacation, () => props.startDate],
+  ([isOpen]) => {
+    if (isOpen) fill();
   },
 );
 
+// Slutdatumet följer med ett nytt startdatum när det är tomt eller hamnar
+// före: en endagssemester kan sparas direkt, och ett slut som redan ligger
+// efter starten (t.ex. vid redigering) lämnas orört.
+watch(start, (newStart) => {
+  if (newStart && (!end.value || end.value < newStart)) end.value = newStart;
+});
+
 const isValid = computed(() => isValidVacationRange(start.value, end.value));
+// Meddelandet gäller bara ett faktiskt omvänt intervall. Tomma fält spärrar
+// Spara via isValid men är inget fel att påpeka i en nyöppnad modal, och ett
+// ogiltigt datum förklaras redan av datumfältet självt.
+const endBeforeStart = computed(() => Boolean(start.value && end.value && end.value < start.value));
 </script>
