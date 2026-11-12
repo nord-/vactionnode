@@ -1,0 +1,29 @@
+services:
+  php:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8080:80"
+    # Hela repo-roten monteras, inte enskilda kataloger. Det ger samma
+    # relativa sökvägar som på NAS:en, och undviker Dockers klassiska fälla:
+    # en bind-mount av en fil som inte finns skapar en KATALOG med det namnet.
+    volumes:
+      - ..:/var/www/html
+    environment:
+      DB_HOST: db
+      DB_PORT: "3306"
+    depends_on:
+      - db
+  db:
+    image: mariadb:10.11.11
+    environment:
+      MARIADB_ROOT_PASSWORD: root
+      MARIADB_DATABASE: vacation
+    # 3307 utåt speglar NAS:en; inuti compose-nätet är porten 3306.
+    ports:
+      - "3307:3306"
+    volumes:
+      - dbdata:/var/lib/mysql
+volumes:
+  dbdata:
