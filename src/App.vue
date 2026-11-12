@@ -5,10 +5,42 @@
   <!-- Steg 2: huvudvy -->
   <div v-else class="p-4 max-w-full">
     <div class="flex items-center justify-between mb-4">
-      <h1 class="text-2xl font-bold">Semesterkalender</h1>
-      <div class="flex items-center gap-4">
+      <h1 class="text-2xl font-bold"><a href="#/">Semesterkalender</a></h1>
+      <div class="flex items-center gap-2">
         <span class="text-sm opacity-70">Inloggad som {{ myName }}</span>
-        <button class="btn btn-ghost btn-sm" @click="onLogout">Logga ut</button>
+        <!-- daisyUI-dropdownen hålls öppen så länge något i den har fokus;
+             closeMenu() tar bort fokuset så att den stängs efter ett val. -->
+        <div class="dropdown dropdown-end">
+          <div tabindex="0" role="button" class="btn btn-ghost btn-sm" aria-label="Meny">
+            <span class="mdi mdi-menu text-xl"></span>
+          </div>
+          <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box shadow z-10 w-64 p-2">
+            <li>
+              <a data-testid="menu-calendar" href="#/"
+                 :class="{ 'menu-active': page === 'calendar' }" @click="closeMenu">
+                <span class="mdi mdi-calendar"></span> Kalender
+              </a>
+            </li>
+            <li v-if="isAdmin">
+              <a data-testid="menu-admin" href="#/admin"
+                 :class="{ 'menu-active': page === 'admin' }" @click="closeMenu">
+                <span class="mdi mdi-account-group"></span> Hantera personer & grupper
+              </a>
+            </li>
+            <!-- Ett tomt <li> ritas som avdelare i daisyUI:s menu. -->
+            <li></li>
+            <li>
+              <button data-testid="menu-change-password" @click="openChangePassword">
+                <span class="mdi mdi-key"></span> Byt lösenord
+              </button>
+            </li>
+            <li>
+              <button data-testid="menu-logout" @click="onLogoutFromMenu">
+                <span class="mdi mdi-logout"></span> Logga ut
+              </button>
+            </li>
+          </ul>
+        </div>
       </div>
     </div>
 
@@ -17,52 +49,57 @@
       <button class="btn btn-sm" @click="reload">Försök igen</button>
     </div>
 
-    <AdminPanel
-      v-if="isAdmin"
-      :groups="store.groups.value"
-      :persons="store.persons.value"
-      @add-group="(name) => guard(store.addGroup(name))"
-      @rename-group="(e) => guard(store.renameGroup(e.id, e.name))"
-      @remove-group="(id) => guard(store.removeGroup(id))"
-      @add-person="(payload) => guard(store.addPerson(payload))"
-      @set-person-group="(e) => guard(store.setPersonGroup(e.id, e.groupId))"
-      @remove-person="onRemovePerson"
-      @set-password="onSetPassword"
-    />
+    <template v-if="page === 'admin'">
+      <h2 class="text-xl font-semibold mb-4">Hantera personer & grupper</h2>
+      <AdminPanel
+        :groups="store.groups.value"
+        :persons="store.persons.value"
+        @add-group="(name) => guard(store.addGroup(name))"
+        @rename-group="(e) => guard(store.renameGroup(e.id, e.name))"
+        @remove-group="(id) => guard(store.removeGroup(id))"
+        @add-person="(payload) => guard(store.addPerson(payload))"
+        @set-person-group="(e) => guard(store.setPersonGroup(e.id, e.groupId))"
+        @remove-person="onRemovePerson"
+        @set-password="onSetPassword"
+      />
+    </template>
 
-    <ChangePasswordView
+    <template v-else>
+      <CalendarControls
+        :from-month="range.from"
+        :to-month="range.to"
+        :groups="store.groups.value"
+        :group-filter-id="groupFilterId"
+        @update:range="range = $event"
+        @update:groupFilter="groupFilterId = $event"
+        @add-vacation="openNewVacation"
+      />
+
+      <CalendarGrid
+        :groups="store.groups.value"
+        :persons="store.persons.value"
+        :vacations="store.vacations.value"
+        :from-month="range.from"
+        :to-month="range.to"
+        :group-filter-id="groupFilterId"
+        @edit-vacation="openEditVacation"
+      />
+
+      <VacationModal
+        v-model="modalOpen"
+        :vacation="editing"
+        :person-name="editingName"
+        :error="vacationError"
+        @save="onSaveVacation"
+        @delete="onDeleteVacation"
+      />
+    </template>
+
+    <ChangePasswordModal
+      v-model="changePasswordOpen"
       :error="changePasswordError"
       :success="changePasswordSuccess"
       @submit="onChangePassword"
-    />
-
-    <CalendarControls
-      :from-month="range.from"
-      :to-month="range.to"
-      :groups="store.groups.value"
-      :group-filter-id="groupFilterId"
-      @update:range="range = $event"
-      @update:groupFilter="groupFilterId = $event"
-      @add-vacation="openNewVacation"
-    />
-
-    <CalendarGrid
-      :groups="store.groups.value"
-      :persons="store.persons.value"
-      :vacations="store.vacations.value"
-      :from-month="range.from"
-      :to-month="range.to"
-      :group-filter-id="groupFilterId"
-      @edit-vacation="openEditVacation"
-    />
-
-    <VacationModal
-      v-model="modalOpen"
-      :vacation="editing"
-      :person-name="editingName"
-      :error="vacationError"
-      @save="onSaveVacation"
-      @delete="onDeleteVacation"
     />
   </div>
 </template>
@@ -76,7 +113,8 @@ import { createStore } from './composables/useStore.js';
 import { defaultRange, monthRangeToDates } from './composables/useDefaultRange.js';
 import { login, logout, currentUser, changePassword } from './lib/auth.js';
 import LoginView from './components/LoginView.vue';
-import ChangePasswordView from './components/ChangePasswordView.vue';
+import { useHashRoute } from './composables/useHashRoute.js';
+import ChangePasswordModal from './components/ChangePasswordModal.vue';
 import AdminPanel from './components/AdminPanel.vue';
 import CalendarControls from './components/CalendarControls.vue';
 import CalendarGrid from './components/CalendarGrid.vue';
@@ -93,6 +131,7 @@ function clearSessionState() {
   store.vacations.value = [];
   store.me.value = null;
   store.error.value = null;
+  changePasswordOpen.value = false;
 }
 
 // onUnauthorized fångar en session som gått ut mitt i arbetet: appen faller
@@ -121,6 +160,15 @@ const user = ref(null);
 const loginError = ref(null);          // sträng, inte boolean
 const isAdmin = computed(() => store.me.value?.isAdmin === true);
 const myName = computed(() => store.me.value?.name ?? '');
+
+// Adminsidan visas bara för administratörer; en vanlig användare som når
+// #/admin får kalendern. Servern nekar ändå alla adminanrop med 403.
+const route = useHashRoute();
+const page = computed(() => (route.value === '/admin' && isAdmin.value ? 'admin' : 'calendar'));
+
+function closeMenu() {
+  document.activeElement?.blur();
+}
 
 const range = ref(defaultRange(new Date()));
 const groupFilterId = ref('all');
@@ -176,8 +224,23 @@ async function onLogout() {
   clearSessionState();
 }
 
+async function onLogoutFromMenu() {
+  closeMenu();
+  await onLogout();
+}
+
+const changePasswordOpen = ref(false);
 const changePasswordError = ref(null);
 const changePasswordSuccess = ref(false);
+
+// Nollställer utfallet från förra bytet: annars visas en gammal bekräftelse,
+// och success-propen går inte från false till true vid nästa lyckade byte.
+function openChangePassword() {
+  closeMenu();
+  changePasswordError.value = null;
+  changePasswordSuccess.value = false;
+  changePasswordOpen.value = true;
+}
 
 async function onChangePassword({ currentPassword, newPassword }) {
   changePasswordError.value = null;
