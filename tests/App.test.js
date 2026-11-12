@@ -56,6 +56,14 @@ describe('App – sparfel på huvudflödet', () => {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
   }
 
+  // Kalenderns första dag: måndagen på eller före månadens första dag.
+  function firstCalendarDay() {
+    const now = new Date();
+    const d = new Date(now.getFullYear(), now.getMonth(), 1);
+    d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
   async function mountWithColleagueVacation(me) {
     const colleague = { id: 'p2', name: 'Bo', email: 'bo@example.com', groupId: null, isAdmin: false };
     const day = firstOfThisMonth();
@@ -128,7 +136,7 @@ describe('App – sparfel på huvudflödet', () => {
 
     await wrapper.find('[data-testid="save"]').trigger('click');
     await flushPromises();
-    expect(posted).toEqual([{ personId: 'p1', start: firstOfThisMonth(), end: firstOfThisMonth() }]);
+    expect(posted).toEqual([{ personId: 'p1', start: firstCalendarDay(), end: firstCalendarDay() }]);
   });
 
   it('låter en administratör lägga till semester åt någon annan genom att klicka i dennes rad', async () => {

@@ -10,12 +10,12 @@ describe('defaultRange', () => {
   });
 });
 
-it('konverterar månadsintervall till datum', () => {
+it('konverterar månadsintervall till datum utfyllt till hela veckor', () => {
   expect(monthRangeToDates({ from: '2026-09', to: '2026-11' }))
-    .toEqual({ from: '2026-09-01', to: '2026-11-30' });
+    .toEqual({ from: '2026-08-31', to: '2026-12-06' });
 });
 
 it('hanterar februari under skottår', () => {
   expect(monthRangeToDates({ from: '2024-02', to: '2024-02' }))
-    .toEqual({ from: '2024-02-01', to: '2024-02-29' });
+    .toEqual({ from: '2024-01-29', to: '2024-03-03' });
 });

@@ -62,15 +62,39 @@ function toIso(date) {
   return `${y}-${m}-${d}`;
 }
 
-export function generateColumns(fromMonth, toMonth) {
+function weekdayIndexOf(date) {
+  return (date.getDay() + 6) % 7; // Må=0 … Sö=6
+}
+
+// Månadsintervallet utfyllt till hela ISO-veckor: från måndagen på eller före
+// från-månadens första dag till söndagen på eller efter till-månadens sista.
+// Datumen beräknas lokalt med setDate, så sommartid flyttar aldrig en dag.
+function weekAlignedDates(fromMonth, toMonth) {
   const { year: fy, month: fm } = parseMonth(fromMonth);
   const { year: ty, month: tm } = parseMonth(toMonth);
   const start = new Date(fy, fm - 1, 1);
+  start.setDate(start.getDate() - weekdayIndexOf(start));
   const end = new Date(ty, tm, 0); // sista dagen i toMonth
+  end.setDate(end.getDate() + 6 - weekdayIndexOf(end));
+  return { start, end };
+}
+
+export function weekAlignedRange(fromMonth, toMonth) {
+  const { start, end } = weekAlignedDates(fromMonth, toMonth);
+  return { from: toIso(start), to: toIso(end) };
+}
+
+export function generateColumns(fromMonth, toMonth) {
+  const { start, end } = weekAlignedDates(fromMonth, toMonth);
+  const first = monthIndex(fromMonth);
+  const last = monthIndex(toMonth);
   const columns = [];
   for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-    const weekdayIndex = (d.getDay() + 6) % 7; // Må=0 … Sö=6
+    const weekdayIndex = weekdayIndexOf(d);
+    const index = d.getFullYear() * 12 + d.getMonth();
     columns.push({
+      // Utfyllnadsdagar före/efter de valda månaderna, för att visa hela veckor.
+      inSelectedMonths: index >= first && index <= last,
       iso: toIso(d),
       day: d.getDate(),
       weekdayLabel: WEEKDAY_LABELS[weekdayIndex],
