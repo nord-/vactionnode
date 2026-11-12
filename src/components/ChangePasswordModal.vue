@@ -1,14 +1,24 @@
 <template>
-  <dialog data-testid="change-password-dialog" class="modal" :open="modelValue">
+  <dialog
+    ref="dialog"
+    data-testid="change-password-dialog"
+    class="modal"
+    :open="modelValue"
+    aria-labelledby="change-password-title"
+    @keydown="onKeydown"
+  >
     <form class="modal-box" @submit.prevent="onSubmit">
-      <h3 class="font-bold text-lg mb-2">Byt lösenord</h3>
+      <h3 id="change-password-title" class="font-bold text-lg mb-2">Byt lösenord</h3>
       <div class="flex flex-col gap-2">
         <input data-testid="current" type="password" class="input w-full"
-               placeholder="Nuvarande lösenord" v-model="current" />
+               placeholder="Nuvarande lösenord" aria-label="Nuvarande lösenord"
+               autocomplete="current-password" v-model="current" />
         <input data-testid="new" type="password" class="input w-full"
-               placeholder="Nytt lösenord" v-model="next" />
+               placeholder="Nytt lösenord" aria-label="Nytt lösenord"
+               autocomplete="new-password" v-model="next" />
         <input data-testid="confirm" type="password" class="input w-full"
-               placeholder="Bekräfta nytt lösenord" v-model="confirm" />
+               placeholder="Bekräfta nytt lösenord" aria-label="Bekräfta nytt lösenord"
+               autocomplete="new-password" v-model="confirm" />
         <p v-if="mismatch" class="text-error text-sm">Lösenorden stämmer inte överens.</p>
         <p v-if="error" data-testid="change-password-error" class="text-error text-sm">{{ error }}</p>
         <p v-if="success" data-testid="change-password-success" class="text-success text-sm">
@@ -27,6 +37,7 @@
 
 <script setup>
 import { ref, watch, onUnmounted } from 'vue';
+import { useDialogFocus } from '../composables/useDialogFocus.js';
 
 // Hur länge bekräftelsen syns innan modalen stänger sig själv.
 const CLOSE_DELAY_MS = 1500;
@@ -42,6 +53,9 @@ const next = ref('');
 const confirm = ref('');
 const mismatch = ref(false);
 let closeTimer = null;
+
+const dialog = ref(null);
+const { onKeydown } = useDialogFocus(dialog, () => props.modelValue, close);
 
 function clearFields() {
   current.value = '';

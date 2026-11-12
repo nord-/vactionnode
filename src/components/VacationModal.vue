@@ -1,17 +1,34 @@
 <template>
-  <dialog class="modal" :open="modelValue">
+  <dialog
+    ref="dialog"
+    class="modal"
+    :open="modelValue"
+    aria-labelledby="vacation-title"
+    @keydown="onKeydown"
+  >
     <div class="modal-box">
-      <h3 class="font-bold text-lg mb-2">
+      <h3 id="vacation-title" class="font-bold text-lg mb-2">
         {{ vacation ? 'Redigera semester' : 'Lägg till semester' }} — {{ personName }}
       </h3>
       <div class="flex flex-col gap-2">
         <div class="flex flex-col gap-1">
-          <span class="text-sm">Startdatum</span>
-          <DateField :key="`start-${fillCount}`" data-testid="start" v-model="start" />
+          <label for="vacation-start" class="text-sm">Startdatum</label>
+          <DateField
+            :key="`start-${fillCount}`"
+            data-testid="start"
+            input-id="vacation-start"
+            v-model="start"
+          />
         </div>
         <div class="flex flex-col gap-1">
-          <span class="text-sm">Slutdatum</span>
-          <DateField :key="`end-${fillCount}`" data-testid="end" v-model="end" :min="start" />
+          <label for="vacation-end" class="text-sm">Slutdatum</label>
+          <DateField
+            :key="`end-${fillCount}`"
+            data-testid="end"
+            input-id="vacation-end"
+            v-model="end"
+            :min="start"
+          />
         </div>
         <p v-if="endBeforeStart" class="text-error text-sm">
           Slutdatum måste vara samma som eller efter startdatum.
@@ -45,6 +62,7 @@
 import { ref, computed, watch } from 'vue';
 import { isValidVacationRange } from '../lib/validation.js';
 import DateField from './DateField.vue';
+import { useDialogFocus } from '../composables/useDialogFocus.js';
 
 const props = defineProps({
   modelValue: { type: Boolean, required: true },
@@ -55,7 +73,14 @@ const props = defineProps({
   startDate: { type: String, default: '' },
 });
 
-defineEmits(['save', 'delete', 'update:modelValue']);
+const emit = defineEmits(['save', 'delete', 'update:modelValue']);
+
+const dialog = ref(null);
+const { onKeydown } = useDialogFocus(
+  dialog,
+  () => props.modelValue,
+  () => emit('update:modelValue', false),
+);
 
 const start = ref('');
 const end = ref('');

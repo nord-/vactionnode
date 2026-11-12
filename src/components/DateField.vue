@@ -11,6 +11,7 @@
       :placeholder="placeholder"
       :min-date="minDate"
       :start-date="minDate"
+      :input-attrs="{ id: inputId || undefined }"
       auto-apply
       teleport
       @text-input="onTextInput"
@@ -37,6 +38,8 @@ const props = defineProps({
   locale: { type: String, default: () => userLocale() },
   // Tidigaste valbara dag (ISO); kalendern öppnas också på den månaden.
   min: { type: String, default: '' },
+  // id på själva textfältet, så att en <label for> kan peka på det.
+  inputId: { type: String, default: '' },
 });
 const emit = defineEmits(['update:modelValue']);
 
