@@ -1,8 +1,6 @@
 # vactionnode
 
-Semesterkalender — en Vue 3 + Vite-app på GitHub Pages där personer matar in sina
-semesterdagar och ser allas frånvaro i en Excel-liknande kalendervy. Personer
-organiseras i grupper (team). GitHub API används som datalager — inget eget backend.
+Semesterkalender — en Vue 3 + Vite-app där personer matar in sina semesterdagar och ser allas frånvaro i en Excel-liknande kalendervy. Personer organiseras i grupper (team). Backend är PHP 8.2 mot MariaDB, med sessionsbaserad inloggning. Ingen GitHub-koppling längre — data lagras i en riktig databas.
 
 ## Funktioner
 
@@ -11,61 +9,93 @@ organiseras i grupper (team). GitHub API används som datalager — inget eget b
 - Inmatning av semester via datumintervall (hela dagar)
 - Visningsintervall i hela månader, max 3 månader åt gången
 - Gruppfilter
-- Enkelt delat lösenord för åtkomst (inte riktig säkerhet)
+- Inloggning med e-post och lösenord mot databasen
 
-## Datafiler
+## Arkitektur
 
-Appen läser och skriver två JSON-datafiler via GitHub API:
+- **Frontend:** Vue 3 + Vite, byggs till statiska filer i `dist/`.
+- **Backend:** PHP 8.2 under `app/`, exponerad via `public/api/index.php`
+  (front controller) och `public/api/.htaccess`.
+- **Databas:** MariaDB 10.11. Schema i `db/schema.sql`.
+- **Config:** `config.php` (gitignorerad, se `config.php.example`) innehåller
+  databasuppkoppling och övriga serverinställningar.
 
-- **`data/registry.json`** — innehåller personer och grupper
-- **`data/vacations.json`** — innehåller semesterposter
-
-Vid start och vid varje uppdatering hämtas dessa filer från din GitHub-gren.
-Ändringar sparas tillbaka via GitHub API. För att applikationen ska fungera korrekt
-måste miljövariablerna i `.env` vara korrekt ifyllda:
-
-- `VITE_GITHUB_OWNER` — repo-ägare (t.ex. `nord-`)
-- `VITE_GITHUB_REPO` — repo-namn (t.ex. `vactionnode`)
-- `VITE_GITHUB_PAT` — GitHub Personal Access Token med åtkomst till repot
-- `VITE_GITHUB_BRANCH` — vilken branch datafiler ligger på (t.ex. `main`)
-- `VITE_REGISTRY_PATH` — sökväg till registry.json (t.ex. `data/registry.json`)
-- `VITE_VACATIONS_PATH` — sökväg till vacations.json (t.ex. `data/vacations.json`)
-- `VITE_PASSWORD` — enkelt lösenord för app-åtkomst
-
-Se `.env.example` för exempel på värden.
-
-## Status
-
-Under uppbyggnad. Designen finns i
-[`docs/superpowers/specs/2026-06-18-semesterkalender-design.md`](docs/superpowers/specs/2026-06-18-semesterkalender-design.md).
+Se `docs/superpowers/specs/2026-09-16-php-mariadb-backend-design.md` för fullständig arkitektur och krav.
 
 ## Utveckling
 
+Backend körs i Docker — värddatorn behöver varken `php` eller `composer`:
+
 ```bash
-cp .env.example .env   # fyll i värden
+cp config.php.example config.php   # se värdena för Docker nedan
+docker compose -f docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml exec -T db mariadb -uroot -proot vacation < db/schema.sql
 npm install
 npm run dev
 ```
 
-### Köra helt lokalt (utan GitHub)
+`config.php.example` är skriven för NAS:en. Mot Docker-miljön ska `config.php` ha
+dessa värden i stället: databasen heter `db` och lyssnar på port 3306 inuti
+compose-nätet, compose skapar bara kontot `root`/`root`, och
+`cookie_secure` måste vara `false` — dev-miljön kör ren HTTP, och en
+`Secure`-cookie sparas aldrig av browsern, så inloggningen ser ut att lyckas
+men nästa anrop ger 401.
 
-Sätt `VITE_DATA_BACKEND=local` i `.env` för att lagra all data i webbläsarens
-localStorage. Då krävs varken PAT eller repo — bra för att smoke-testa
-gränssnittet offline. `VITE_GITHUB_*`-variablerna ignoreras i det läget.
+```php
+'db' => ['host' => 'db', 'port' => 3306, 'name' => 'vacation', 'user' => 'root', 'pass' => 'root'],
+'cookie_secure' => false,
+```
 
-Hela testsviten körs alltid lokalt utan nätverk:
+Schemat måste läsas in i `vacation`-databasen innan första kontot skapas;
+`db/reset-test-db.sh` laddar bara `vacation_test`.
+
+`npm run dev` startar Vite på en egen port och proxar `/api` mot
+`http://localhost:8080`, där PHP-containern lyssnar.
+
+### Skapa första kontot
+
+```bash
+docker compose -f docker/docker-compose.yml exec php php db/create-admin.php
+```
+
+Skriptet frågar efter namn, e-post och lösenord och skapar en administratör.
+
+### Testsviter
+
+Frontend-testerna körs alltid lokalt utan nätverk:
 
 ```bash
 npm test -- --run
 ```
 
+PHP-testerna körs inne i containern:
+
+```bash
+docker compose -f docker/docker-compose.yml exec -T php composer test
+```
+
+## Bygge
+
+```bash
+npm run build
+```
+
+Bygger till `dist/` med `base: '/'`. `public/` är PHP:ns document root i det
+här projektet, inte Vites — `publicDir: false` i `vite.config.js` ser till att
+`vite build` inte kopierar `public/api/` in i `dist/`.
+
 ## Deploy
 
-Deploy sker manuellt till GitHub Pages med `gh-pages`-paketet från en miljö där
-`.env` är ifylld (miljövariablerna bäddas in i bygget):
+Deploy sker till en Synology Web Station-portal via rsync:
 
 ```bash
 npm run deploy
 ```
 
-Ingen CI/CD-pipeline ingår. PAT-scope `public_repo` räcker så länge repot är publikt.
+Detta kör `scripts/deploy.sh`, som bygger, synkar `dist/` till portalens
+`public/` (utan att röra `public/api/`), synkar `app/` separat och synkar
+`public/api/` (front controllern `index.php` och `.htaccess`) för sig. `db/`
+och `config.php` deployas manuellt vid installationen — se skriptet för
+detaljer.
+`rsync` krävs på maskinen som deployar; skriptet avbryter med ett tydligt fel
+om det saknas.

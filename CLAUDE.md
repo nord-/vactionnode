@@ -4,49 +4,68 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Vad det här är
 
-Semesterkalender — en Vue 3 + Vite SPA på GitHub Pages där personer matar in
-semesterdagar och ser allas frånvaro i en Excel-liknande kalendervy. Personer
-organiseras i grupper. Inget eget backend: GitHub API används som datalager.
+Semesterkalender — en Vue 3 + Vite SPA där personer matar in semesterdagar och
+ser allas frånvaro i en Excel-liknande kalendervy. Personer organiseras i
+grupper. Backend är PHP 8.2 mot MariaDB 10.11, deployad på en Synology Web
+Station-portal.
 
-Projektet är ännu inte scaffoldat — koden byggs enligt designdokumentet i
-`docs/superpowers/specs/2026-06-18-semesterkalender-design.md`. Läs det dokumentet
-först; det är källan till sanning för arkitektur och krav.
+Designdokumentet för migreringen till PHP/MariaDB-backendet ligger i
+`docs/superpowers/specs/2026-09-16-php-mariadb-backend-design.md`.
+
+## Viktigt: värddatorn har varken `php` eller `composer`
+
+All PHP körs i Docker-containern. Kör aldrig `php` eller `composer` direkt på
+värden — de finns inte där. Använd alltid
+`docker compose -f docker/docker-compose.yml exec php ...` respektive
+`docker compose -f docker/docker-compose.yml exec -T php composer ...`
+(`-T` slår av TTY-allokering, vilket krävs när kommandot körs icke-interaktivt).
 
 ## Kommandon
 
-Stacken är Vue 3 + Vite + Tailwind/daisyUI + Vitest, ikoner via `@mdi/font`
-(scaffoldas enligt planen). Förväntade kommandon:
+Stacken är Vue 3 + Vite + Tailwind/daisyUI + Vitest på frontend, PHP 8.2 +
+MariaDB på backend, ikoner via `@mdi/font`.
 
-- `npm run dev` — utvecklingsserver
+Frontend, körs direkt på värden med Node/npm:
+
+- `npm run dev` — utvecklingsserver, proxar `/api` mot `http://localhost:8080`
 - `npm run build` — produktionsbygge till `dist/`
 - `npm test` — kör Vitest
 - `npx vitest run path/to/file.test.js` — kör ett enskilt testfil
 - `npx vitest -t "test name"` — kör ett enskilt test via namn
-- `npm run deploy` — deploy till GitHub Pages via `gh-pages`-paketet
+- `npm run deploy` — kör `scripts/deploy.sh`, bygger och rsyncar till NAS:en
+
+Backend, körs i Docker-containern:
+
+- `docker compose -f docker/docker-compose.yml up -d` — starta PHP + MariaDB
+- `docker compose -f docker/docker-compose.yml exec -T php composer test` — kör PHPUnit
+- `docker compose -f docker/docker-compose.yml exec php php db/create-admin.php` — skapa första kontot
+- `db/reset-test-db.sh` — återställ testdatabasen från `db/schema.sql`
 
 ## Arkitektur
 
-### Datalagring (GitHub API, ingen server)
+### Datalagring (MariaDB)
 
-Data ligger i två JSON-filer i repot, åtskilda för att minska skrivkonflikter:
+Schema i `db/schema.sql`: `teams`, `users` (med `team_id`, `is_admin`,
+`password_hash`) och `vacations`. All databasåtkomst går via PDO, kapslad
+bakom klasser i `app/` (`Db`, `Persons`, m.fl.) så den kan testas isolerat
+med PHPUnit mot `vacation_test`-databasen.
 
-- **`data/registry.json`** — `groups` + `persons` (ändras sällan)
-- **`data/vacations.json`** — `vacations` (skrivs ofta)
+### API
 
-All GitHub API-kommunikation kapslas bakom **ett interface** så det kan mockas i
-tester. Läsning hämtar filinnehåll + `sha`; skrivning kräver `sha` och måste hantera
-`409 Conflict` med **refetch + merge + retry** (max ~3 försök). Korrupt/saknad fil
-behandlas som tomt dataset, inte krasch.
+`public/api/index.php` är front controller, routad via `app/Router.php` till
+handlers under `app/Handlers/`. `public/api/.htaccess` skickar alla
+API-anrop dit. `public/` är PHP:ns document root i det här projektet — inte
+en katalog för statiska Vite-tillgångar.
 
-### Autentisering & identitet (ingen riktig säkerhet)
+### Autentisering & identitet
 
-- **Lösenord:** delat lösenord för alla, jämförs mot `VITE_PASSWORD`. Vid lyckad
-  inloggning sätts `localStorage.authenticated = true`.
-- **Identitet:** `personId` sparas i `localStorage`. Saknas det visas "Välj dig"
-  (skapa ny person eller välj befintlig).
-- **PAT + lösenord** bäddas in i bundlen via Vite-miljövariabler. Detta är en
-  medveten avvägning för ett internt verktyg — extrahera aldrig detta till loggar
-  och anta inte att det skyddar mot en angripare.
+- **Inloggning:** e-post + lösenord mot `users`-tabellen (`password_hash`),
+  sessionsbaserad via PHP-sessioner. Hanteras av `app/Auth.php`.
+- **Identitet:** inloggad användares `personId` styr vilka semesterposter som
+  visas som "mina".
+- Ingen hemlighet bäddas längre in i frontend-bygget — `config.php` på
+  servern (gitignorerad, se `config.php.example`) håller
+  databasuppkoppling och övriga inställningar.
 
 ### Kalenderlogik (kritiska kantfall)
 
@@ -57,15 +76,26 @@ behandlas som tomt dataset, inte krasch.
   **syntetisk "Ogrupperade"-grupp** som alltid visas sist.
 - Helger (lör/sön) får egen bakgrundsfärg på hela kolumnen.
 
-### Öppen ändringsmodell
+### Rättighetsmodell
 
-Vem som helst som är inloggad kan ändra/ta bort vems som helst semester och hantera
-personer/grupper. Detta är avsiktligt — designa inte in behörighetskontroller.
+- En vanlig användare får bara skriva sin egen semester.
+- Allt annat — konton, grupper och gruppmedlemskap — kräver administratör.
+- En administratör får därutöver ändra semestern för vem som helst, så att
+  rättelser går att göra när någon har slutat eller är borta.
+- Vakten körs i `app/Router.php` före varje handler och upprepas i SQL:et som
+  försvar på djupet (`WHERE id = ? AND (user_id = ? OR ? = 1)` i
+  `app/Handlers/VacationHandler.php`); `tests-php/GuardMatrixTest.php` är
+  fjortonradstabellen som bevisar det.
+- Appen är publikt exponerad — försvaga inte den här vakten utan att först
+  ändra specen.
 
 ## Konventioner
 
-- Conventional commits (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`).
-- Svenska i UI-text, commit-meddelanden och kommentarer.
-- Spaces (inte tabbar), CRLF-radslut.
+- Conventional commits (`feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`).
+- UI-text, kodkommentarer och dokumentation på svenska; commit-meddelanden,
+  PR-titlar och PR-beskrivningar på engelska. Det följer användarens globala
+  regel om att allt utåtriktat ska vara på engelska, oavsett repo.
+- Spaces (inte tabbar), CRLF-radslut — utom `.sh`-filer, som ska ha LF
+  (se `.gitattributes`).
 - Ren logik (ISO-veckor, kolumngenerering, validering, gruppering) hålls fristående
   från DOM/nätverk så den kan enhetstestas i Vitest.
