@@ -1,7 +1,16 @@
 # Semesterkalender — Designdokument
 
 **Datum:** 2026-06-18
-**Status:** Godkänd design
+**Status:** Ersatt. Datalagrings- och säkerhetsmodellen nedan gäller inte längre — se
+`2026-09-16-php-mariadb-backend-design.md`.
+
+> **OBS:** Det här dokumentet beskriver den ursprungliga GitHub Pages/GitHub API-
+> versionen av appen. Datalagret (två JSON-filer i ett repo, läst/skrivet via en
+> inbäddad personal access token) och säkerhetsmodellen (delat lösenord, ingen
+> riktig användarsäkerhet) som beskrivs här ersattes av PHP 8.2 + MariaDB med
+> sessionsbaserad inloggning — se `2026-09-16-php-mariadb-backend-design.md`.
+> Kalendervyn, ISO-veckologiken och grupperingen som beskrivs nedan gäller
+> fortfarande oförändrat; det är bara datalagret och säkerheten som bytts ut.
 
 ## 1. Syfte
 
