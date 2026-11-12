@@ -1,26 +1,17 @@
 <template>
   <div class="flex flex-wrap items-end gap-3 mb-4">
-    <label class="flex flex-col gap-1">
+    <div class="flex flex-col gap-1">
       <span class="text-sm">Från månad</span>
-      <input
-        type="month"
-        class="input input-sm w-auto"
-        :value="fromMonth"
-        @change="onRangeChange('from', $event.target.value)"
-      />
-    </label>
-    <label class="flex flex-col gap-1">
+      <MonthField :model-value="fromMonth" @update:model-value="onRangeChange('from', $event)" />
+    </div>
+    <div class="flex flex-col gap-1">
       <span class="text-sm">Till månad</span>
-      <input
-        type="month"
-        class="input input-sm w-auto"
-        :value="toMonth"
-        @change="onRangeChange('to', $event.target.value)"
-      />
-    </label>
+      <MonthField :model-value="toMonth" @update:model-value="onRangeChange('to', $event)" />
+    </div>
     <label class="flex flex-col gap-1">
       <span class="text-sm">Grupp</span>
       <select
+        data-testid="group-filter"
         class="select select-sm w-auto"
         :value="groupFilterId"
         @change="$emit('update:groupFilter', $event.target.value)"
@@ -37,6 +28,7 @@
 
 <script setup>
 import { clampMonthRange } from '../lib/validation.js';
+import MonthField from './MonthField.vue';
 
 const props = defineProps({
   fromMonth: { type: String, required: true },

@@ -4,3 +4,13 @@
    själv vilka filer som ska skannas (alla som inte är gitignorerade); styrs
    vid behov med @source. daisyUI laddas som plugin härifrån. */
 @plugin 'daisyui';
+
+/* Datumväljaren (@vuepic/vue-datepicker) får appens primärfärg och typsnitt
+   i stället för bibliotekets blå. html-prefixet gör regeln starkare än
+   bibliotekets egen, oavsett i vilken ordning CSS-filerna laddas. */
+html .dp--theme-light {
+  --dp-primary-color: var(--color-primary);
+  --dp-primary-text-color: var(--color-primary-content);
+  --dp-highlight-color: color-mix(in oklab, var(--color-primary) 10%, transparent);
+  --dp-font-family: inherit;
+}
