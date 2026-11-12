@@ -6,6 +6,13 @@ const groups = [{ id: 'g1', name: 'Team A' }];
 const persons = [{ id: 'p1', name: 'Anna', groupId: 'g1' }];
 
 describe('AdminPanel', () => {
+  it('visar grupper och personer i var sitt kort', () => {
+    const wrapper = mount(AdminPanel, { props: { groups, persons } });
+
+    const titles = wrapper.findAll('.card .card-title').map((t) => t.text());
+    expect(titles).toEqual(['Grupper', 'Personer']);
+  });
+
   it('emittar add-group med namnet', async () => {
     const wrapper = mount(AdminPanel, { props: { groups, persons } });
 
