@@ -16,6 +16,7 @@
         <p v-if="!isValid" class="text-error text-sm">
           Slutdatum måste vara samma som eller efter startdatum.
         </p>
+        <p v-if="error" data-testid="vacation-error" class="text-error text-sm">{{ error }}</p>
       </div>
       <div class="modal-action">
         <button
@@ -48,6 +49,7 @@ const props = defineProps({
   modelValue: { type: Boolean, required: true },
   vacation: { type: Object, default: null },
   personName: { type: String, default: '' },
+  error: { type: String, default: null },
 });
 
 defineEmits(['save', 'delete', 'update:modelValue']);

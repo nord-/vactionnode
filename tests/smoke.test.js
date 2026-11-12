@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils';
 import App from '../src/App.vue';
 
 describe('App', () => {
-  it('visar inloggningsvyn när man inte är autentiserad', () => {
+  it('visar inloggningsvyn när man inte är autentiserad', async () => {
     localStorage.clear();
     const wrapper = mount(App);
     expect(wrapper.text()).toContain('Logga in');

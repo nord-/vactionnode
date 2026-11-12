@@ -1,17 +1,23 @@
-const KEY = 'authenticated';
+import { ApiError } from './apiClient.js';
 
-export function isAuthenticated(storage = localStorage) {
-  return storage.getItem(KEY) === 'true';
+export function login(api, email, password) {
+  return api.post('/session', { email, password });
 }
 
-export function login(password, expected, storage = localStorage) {
-  if (password === expected) {
-    storage.setItem(KEY, 'true');
-    return true;
+export function logout(api) {
+  return api.del('/session');
+}
+
+// Sessionen är identiteten. Ingen flagga i localStorage, inget personId.
+export async function currentUser(api) {
+  try {
+    return await api.get('/session');
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 401) return null;
+    throw e;
   }
-  return false;
 }
 
-export function logout(storage = localStorage) {
-  storage.removeItem(KEY);
+export function changePassword(api, currentPassword, newPassword) {
+  return api.put('/session/password', { currentPassword, newPassword });
 }
