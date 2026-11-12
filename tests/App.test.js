@@ -96,3 +96,99 @@ describe('App – sparfel på huvudflödet', () => {
     expect(wrapper.find('dialog').attributes('open')).toBeUndefined();
   });
 });
+
+describe('App – meny och sidor', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+    window.location.hash = '';
+  });
+
+  async function mountAs(me) {
+    vi.stubGlobal('fetch', vi.fn(async (url, options = {}) => {
+      const method = options.method ?? 'GET';
+      if (url.includes('/api/session') && method === 'GET') return jsonResponse(me);
+      if (url.includes('/api/bootstrap')) {
+        return jsonResponse({ me, groups: [], persons: [me], vacations: [] });
+      }
+      return jsonResponse({}, 200);
+    }));
+
+    const wrapper = mount(App);
+    await flushPromises();
+    return wrapper;
+  }
+
+  async function goTo(hash) {
+    window.location.hash = hash;
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    await flushPromises();
+  }
+
+  const user = { id: 'p1', name: 'Anna', email: 'anna@example.com', groupId: null, isAdmin: false };
+  const admin = { ...user, isAdmin: true };
+
+  it('visar Kalender, Byt lösenord och Logga ut men inte adminvalet för en vanlig användare', async () => {
+    const wrapper = await mountAs(user);
+
+    expect(wrapper.find('[data-testid="menu-calendar"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="menu-change-password"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="menu-logout"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="menu-admin"]').exists()).toBe(false);
+  });
+
+  it('visar adminvalet för en administratör', async () => {
+    const wrapper = await mountAs(admin);
+
+    expect(wrapper.find('[data-testid="menu-admin"]').attributes('href')).toBe('#/admin');
+  });
+
+  it('visar varken adminpanel eller lösenordsformulär på kalendersidan', async () => {
+    const wrapper = await mountAs(admin);
+
+    expect(wrapper.find('[data-testid="new-group"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="add-vacation"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="change-password-dialog"]').attributes('open')).toBeUndefined();
+    expect(wrapper.find('[data-testid="menu-calendar"]').classes()).toContain('menu-active');
+  });
+
+  it('byter till adminsidan på #/admin och tillbaka till kalendern på #/', async () => {
+    const wrapper = await mountAs(admin);
+
+    await goTo('#/admin');
+    expect(wrapper.find('[data-testid="new-group"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="add-vacation"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="menu-admin"]').classes()).toContain('menu-active');
+    expect(wrapper.find('[data-testid="menu-calendar"]').classes()).not.toContain('menu-active');
+
+    await goTo('#/');
+    expect(wrapper.find('[data-testid="new-group"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="add-vacation"]').exists()).toBe(true);
+  });
+
+  it('visar kalendern för en vanlig användare som går till #/admin', async () => {
+    window.location.hash = '#/admin';
+    const wrapper = await mountAs(user);
+
+    expect(wrapper.find('[data-testid="new-group"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="add-vacation"]').exists()).toBe(true);
+  });
+
+  it('öppnar lösenordsmodalen från menyn', async () => {
+    const wrapper = await mountAs(user);
+
+    await wrapper.find('[data-testid="menu-change-password"]').trigger('click');
+
+    expect(wrapper.find('[data-testid="change-password-dialog"]').attributes('open')).toBeDefined();
+  });
+
+  it('loggar ut från menyn', async () => {
+    const wrapper = await mountAs(user);
+
+    await wrapper.find('[data-testid="menu-logout"]').trigger('click');
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="menu-logout"]').exists()).toBe(false);
+    expect(wrapper.find('input[type="email"]').exists()).toBe(true);
+  });
+});
