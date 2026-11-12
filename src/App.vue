@@ -3,7 +3,7 @@
   <LoginView v-if="!user" :error="loginError" @submit="onLogin" />
 
   <!-- Steg 2: huvudvy -->
-  <div v-else class="p-4 max-w-full">
+  <div v-else class="p-4 max-w-full min-h-screen bg-base-200">
     <div class="flex items-center justify-between mb-4">
       <h1 class="text-2xl font-bold"><a href="#/">Semesterkalender</a></h1>
       <div class="flex items-center gap-2">
@@ -65,25 +65,29 @@
     </template>
 
     <template v-else>
-      <CalendarControls
-        :from-month="range.from"
-        :to-month="range.to"
-        :groups="store.groups.value"
-        :group-filter-id="groupFilterId"
-        @update:range="range = $event"
-        @update:groupFilter="groupFilterId = $event"
-        @add-vacation="openNewVacation"
-      />
+      <div class="card bg-base-100 shadow-sm">
+        <div class="card-body">
+          <CalendarControls
+            :from-month="range.from"
+            :to-month="range.to"
+            :groups="store.groups.value"
+            :group-filter-id="groupFilterId"
+            @update:range="range = $event"
+            @update:groupFilter="groupFilterId = $event"
+            @add-vacation="openNewVacation"
+          />
 
-      <CalendarGrid
-        :groups="store.groups.value"
-        :persons="store.persons.value"
-        :vacations="store.vacations.value"
-        :from-month="range.from"
-        :to-month="range.to"
-        :group-filter-id="groupFilterId"
-        @edit-vacation="openEditVacation"
-      />
+          <CalendarGrid
+            :groups="store.groups.value"
+            :persons="store.persons.value"
+            :vacations="store.vacations.value"
+            :from-month="range.from"
+            :to-month="range.to"
+            :group-filter-id="groupFilterId"
+            @edit-vacation="openEditVacation"
+          />
+        </div>
+      </div>
 
       <VacationModal
         v-model="modalOpen"
