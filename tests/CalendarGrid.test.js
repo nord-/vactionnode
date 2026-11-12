@@ -18,9 +18,18 @@ describe('CalendarGrid', () => {
     expect(w.text()).toContain('Team A');
     expect(w.text()).toContain('Anna');
   });
-  it('renderar en kolumn per dag i månaden', () => {
+  it('renderar en kolumn per dag i månaden, utfylld till hela veckor', () => {
     const w = mountGrid();
-    expect(w.findAll('[data-testid="day-header"]').length).toBe(30);
+    // Juni 2025: 1:a är en söndag, 30:e en måndag -> 26 maj till 6 juli.
+    expect(w.findAll('[data-testid="day-header"]').length).toBe(6 + 30 + 6);
+  });
+  it('tonar ned utfyllnadsdagar och lämnar deras månadsrubrik tom', () => {
+    const w = mountGrid();
+    const headers = w.findAll('[data-testid="day-header"]');
+    expect(headers[0].classes()).toContain('opacity-60');
+    expect(headers[6].classes()).not.toContain('opacity-60');
+    const monthHeaders = w.findAll('thead tr')[0].findAll('th').slice(1).map((th) => th.text());
+    expect(monthHeaders).toEqual(['', 'JUNI 2025', '']);
   });
   it('markerar semesterceller', () => {
     const w = mountGrid();
@@ -36,7 +45,7 @@ describe('CalendarGrid', () => {
     const empty = w.findAll('[data-vacation="false"]')[0];
     expect(empty.classes()).toContain('cursor-pointer');
     await empty.trigger('click');
-    expect(w.emitted('add-vacation')[0][0]).toEqual({ personId: 'p1', date: '2025-06-01' });
+    expect(w.emitted('add-vacation')[0][0]).toEqual({ personId: 'p1', date: '2025-05-26' });
   });
   it('emittar inget vid klick på en tom cell som inte får läggas till', async () => {
     const w = mountGrid({ canAddFor: () => false });
@@ -44,6 +53,14 @@ describe('CalendarGrid', () => {
     expect(empty.classes()).not.toContain('cursor-pointer');
     await empty.trigger('click');
     expect(w.emitted('add-vacation')).toBeUndefined();
+  });
+  it('håller ihop vecka 53 över årsskiftet när utfyllnaden börjar året innan', () => {
+    const w = mountGrid({ fromMonth: '2027-01', toMonth: '2027-01', vacations: [] });
+    const [monthRow, weekRow] = w.findAll('thead tr');
+    const firstWeek = weekRow.findAll('th')[1];
+    expect(firstWeek.text()).toBe('v.53');
+    expect(firstWeek.attributes('colspan')).toBe('7');
+    expect(monthRow.findAll('th').slice(1).map((th) => th.text())).toEqual(['', 'JANUARI 2027']);
   });
   it('visar pekarmarkör på en semestercell bara när den får öppnas', () => {
     const allowed = mountGrid({ canAddFor: () => true });

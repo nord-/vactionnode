@@ -34,7 +34,7 @@
             :key="col.iso"
             data-testid="day-header"
             class="px-1 text-center align-top w-8"
-            :class="col.isWeekend ? 'bg-base-300' : 'bg-base-100'"
+            :class="[col.isWeekend ? 'bg-base-300' : 'bg-base-100', { 'opacity-60': !col.inSelectedMonths }]"
           >
             <div class="font-semibold leading-tight">{{ col.day }}</div>
             <div class="text-[10px] opacity-70 leading-tight">{{ col.weekdayLabel }}</div>
@@ -105,13 +105,22 @@ const filteredGroups = computed(() => {
 
 const sections = computed(() => groupPersons(filteredGroups.value, filteredPersons.value));
 
-// Sammanhängande månads-spann för colspan.
+// Sammanhängande månads-spann för colspan. Utfyllnadsdagarna utanför de
+// valda månaderna får ett eget spann utan rubrik: "FEBRUARI 2027" över en
+// enda kolumn skulle annars tvinga kolumnen att bli bred.
 const monthSpans = computed(() => {
   const spans = [];
   for (const col of columns.value) {
+    const monthKey = col.inSelectedMonths ? col.monthKey : `pad-${col.monthKey}`;
     const last = spans.at(-1);
-    if (last && last.monthKey === col.monthKey) last.count++;
-    else spans.push({ monthKey: col.monthKey, monthLabel: col.monthLabel, count: 1 });
+    if (last && last.monthKey === monthKey) last.count++;
+    else {
+      spans.push({
+        monthKey,
+        monthLabel: col.inSelectedMonths ? col.monthLabel : '',
+        count: 1,
+      });
+    }
   }
   return spans;
 });
