@@ -1,10 +1,10 @@
 <template>
   <form class="flex flex-col gap-2 max-w-sm" @submit.prevent="onSubmit">
-    <input data-testid="current" type="password" class="input input-bordered"
+    <input data-testid="current" type="password" class="input w-auto"
            placeholder="Nuvarande lösenord" v-model="current" />
-    <input data-testid="new" type="password" class="input input-bordered"
+    <input data-testid="new" type="password" class="input w-auto"
            placeholder="Nytt lösenord" v-model="next" />
-    <input data-testid="confirm" type="password" class="input input-bordered"
+    <input data-testid="confirm" type="password" class="input w-auto"
            placeholder="Bekräfta nytt lösenord" v-model="confirm" />
     <p v-if="mismatch" class="text-error text-sm">Lösenorden stämmer inte överens.</p>
     <p v-if="error" data-testid="change-password-error" class="text-error text-sm">{{ error }}</p>

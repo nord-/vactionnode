@@ -1,27 +1,27 @@
 <template>
   <div class="flex flex-wrap items-end gap-3 mb-4">
-    <label class="form-control">
-      <span class="label-text">Från månad</span>
+    <label class="flex flex-col gap-1">
+      <span class="text-sm">Från månad</span>
       <input
         type="month"
-        class="input input-bordered input-sm"
+        class="input input-sm w-auto"
         :value="fromMonth"
         @change="onRangeChange('from', $event.target.value)"
       />
     </label>
-    <label class="form-control">
-      <span class="label-text">Till månad</span>
+    <label class="flex flex-col gap-1">
+      <span class="text-sm">Till månad</span>
       <input
         type="month"
-        class="input input-bordered input-sm"
+        class="input input-sm w-auto"
         :value="toMonth"
         @change="onRangeChange('to', $event.target.value)"
       />
     </label>
-    <label class="form-control">
-      <span class="label-text">Grupp</span>
+    <label class="flex flex-col gap-1">
+      <span class="text-sm">Grupp</span>
       <select
-        class="select select-bordered select-sm"
+        class="select select-sm w-auto"
         :value="groupFilterId"
         @change="$emit('update:groupFilter', $event.target.value)"
       >

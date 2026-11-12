@@ -5,13 +5,13 @@
         {{ vacation ? 'Redigera semester' : 'Lägg till semester' }} — {{ personName }}
       </h3>
       <div class="flex flex-col gap-2">
-        <label class="form-control">
-          <span class="label-text">Startdatum</span>
-          <input data-testid="start" type="date" class="input input-bordered" v-model="start" />
+        <label class="flex flex-col gap-1">
+          <span class="text-sm">Startdatum</span>
+          <input data-testid="start" type="date" class="input w-auto" v-model="start" />
         </label>
-        <label class="form-control">
-          <span class="label-text">Slutdatum</span>
-          <input data-testid="end" type="date" class="input input-bordered" v-model="end" />
+        <label class="flex flex-col gap-1">
+          <span class="text-sm">Slutdatum</span>
+          <input data-testid="end" type="date" class="input w-auto" v-model="end" />
         </label>
         <p v-if="!isValid" class="text-error text-sm">
           Slutdatum måste vara samma som eller efter startdatum.

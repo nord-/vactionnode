@@ -5,14 +5,14 @@
       <input
         data-testid="email"
         type="email"
-        class="input input-bordered w-full mb-2"
+        class="input w-full mb-2"
         placeholder="E-post"
         v-model="email"
       />
       <input
         data-testid="password"
         type="password"
-        class="input input-bordered w-full mb-2"
+        class="input w-full mb-2"
         placeholder="Lösenord"
         v-model="password"
       />
