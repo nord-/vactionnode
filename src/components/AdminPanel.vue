@@ -10,7 +10,7 @@
           <ul class="flex flex-col gap-1 mb-3">
             <li v-for="g in groups" :key="g.id" class="flex items-center gap-2">
               <input
-                class="input input-bordered input-sm flex-1"
+                class="input input-sm flex-1"
                 :value="g.name"
                 @change="$emit('rename-group', { id: g.id, name: $event.target.value })"
               />
@@ -20,7 +20,7 @@
             </li>
           </ul>
           <div class="flex gap-2">
-            <input data-testid="new-group" class="input input-bordered input-sm flex-1" placeholder="Ny grupp" v-model="newGroup" />
+            <input data-testid="new-group" class="input input-sm flex-1" placeholder="Ny grupp" v-model="newGroup" />
             <button data-testid="add-group" class="btn btn-primary btn-sm" :disabled="!newGroup.trim()" @click="addGroup">
               Lägg till
             </button>
@@ -34,7 +34,7 @@
             <li v-for="p in persons" :key="p.id" class="flex items-center gap-2">
               <span class="flex-1">{{ p.name }}</span>
               <select
-                class="select select-bordered select-sm"
+                class="select select-sm w-auto"
                 :data-testid="`person-group-${p.id}`"
                 :value="p.groupId ?? ''"
                 @change="$emit('set-person-group', { id: p.id, groupId: $event.target.value || null })"
@@ -45,7 +45,7 @@
               <input
                 :data-testid="`person-password-${p.id}`"
                 type="password"
-                class="input input-bordered input-sm"
+                class="input input-sm w-auto"
                 placeholder="Nytt lösenord"
                 v-model="passwordDrafts[p.id]"
               />
@@ -67,17 +67,17 @@
             </li>
           </ul>
           <div class="flex gap-2">
-            <input data-testid="new-person" class="input input-bordered input-sm flex-1" placeholder="Ny person" v-model="newPerson" />
-            <input data-testid="new-person-email" type="email" class="input input-bordered input-sm"
+            <input data-testid="new-person" class="input input-sm flex-1" placeholder="Ny person" v-model="newPerson" />
+            <input data-testid="new-person-email" type="email" class="input input-sm w-auto"
                    placeholder="E-post" v-model="newPersonEmail" />
-            <input data-testid="new-person-password" type="password" class="input input-bordered input-sm"
+            <input data-testid="new-person-password" type="password" class="input input-sm w-auto"
                    placeholder="Lösenord" v-model="newPersonPassword" />
             <label class="label cursor-pointer gap-2">
-              <span class="label-text">Administratör</span>
+              <span class="text-sm">Administratör</span>
               <input data-testid="new-person-admin" type="checkbox" class="checkbox checkbox-sm"
                      v-model="newPersonAdmin" />
             </label>
-            <select data-testid="new-person-group" class="select select-bordered select-sm" v-model="newPersonGroup">
+            <select data-testid="new-person-group" class="select select-sm w-auto" v-model="newPersonGroup">
               <option value="">Ogrupperade</option>
               <option v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</option>
             </select>
