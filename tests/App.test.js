@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { mount, flushPromises } from '@vue/test-utils';
 import App from '../src/App.vue';
+import { typeDate } from './helpers/dateField.js';
 
 function jsonResponse(body, status = 200) {
   return {
@@ -38,8 +39,8 @@ describe('App – sparfel på huvudflödet', () => {
     await flushPromises();
 
     await wrapper.find('[data-testid="add-vacation"]').trigger('click');
-    await wrapper.find('[data-testid="start"]').setValue('2026-06-16');
-    await wrapper.find('[data-testid="end"]').setValue('2026-06-20');
+    await typeDate(wrapper, 'start', '2026-06-16');
+    await typeDate(wrapper, 'end', '2026-06-20');
     await wrapper.find('[data-testid="save"]').trigger('click');
     await flushPromises();
 

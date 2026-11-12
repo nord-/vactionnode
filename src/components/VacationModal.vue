@@ -5,14 +5,14 @@
         {{ vacation ? 'Redigera semester' : 'Lägg till semester' }} — {{ personName }}
       </h3>
       <div class="flex flex-col gap-2">
-        <label class="flex flex-col gap-1">
+        <div class="flex flex-col gap-1">
           <span class="text-sm">Startdatum</span>
-          <input data-testid="start" type="date" class="input w-auto" v-model="start" />
-        </label>
-        <label class="flex flex-col gap-1">
+          <DateField data-testid="start" v-model="start" />
+        </div>
+        <div class="flex flex-col gap-1">
           <span class="text-sm">Slutdatum</span>
-          <input data-testid="end" type="date" class="input w-auto" v-model="end" />
-        </label>
+          <DateField data-testid="end" v-model="end" />
+        </div>
         <p v-if="!isValid" class="text-error text-sm">
           Slutdatum måste vara samma som eller efter startdatum.
         </p>
@@ -44,6 +44,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { isValidVacationRange } from '../lib/validation.js';
+import DateField from './DateField.vue';
 
 const props = defineProps({
   modelValue: { type: Boolean, required: true },

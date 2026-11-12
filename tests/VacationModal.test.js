@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import VacationModal from '../src/components/VacationModal.vue';
+import { typeDate } from './helpers/dateField.js';
 
 function mountModal(extra = {}) {
   return mount(VacationModal, {
@@ -11,15 +12,15 @@ function mountModal(extra = {}) {
 describe('VacationModal', () => {
   it('inaktiverar Spara vid ogiltigt intervall', async () => {
     const w = mountModal();
-    await w.find('[data-testid="start"]').setValue('2025-06-20');
-    await w.find('[data-testid="end"]').setValue('2025-06-16');
+    await typeDate(w, 'start', '2025-06-20');
+    await typeDate(w, 'end', '2025-06-16');
     expect(w.find('[data-testid="save"]').attributes('disabled')).toBeDefined();
   });
 
   it('emittar save med giltigt intervall', async () => {
     const w = mountModal();
-    await w.find('[data-testid="start"]').setValue('2025-06-16');
-    await w.find('[data-testid="end"]').setValue('2025-06-20');
+    await typeDate(w, 'start', '2025-06-16');
+    await typeDate(w, 'end', '2025-06-20');
     await w.find('[data-testid="save"]').trigger('click');
     expect(w.emitted('save')[0][0]).toEqual({ start: '2025-06-16', end: '2025-06-20' });
   });
