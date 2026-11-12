@@ -23,13 +23,15 @@ värden — de finns inte där. Använd alltid
 ## Kommandon
 
 Stacken är Vue 3 + Vite + Tailwind/daisyUI + Vitest på frontend, PHP 8.2 +
-MariaDB på backend, ikoner via `@mdi/font`.
+MariaDB på backend, ikoner via `@mdi/font`, datumfält via
+`@vuepic/vue-datepicker` med `date-fns`-locales.
 
 Frontend, körs direkt på värden med Node/npm:
 
 - `npm run dev` — utvecklingsserver, proxar `/api` mot `http://localhost:8080`
 - `npm run build` — produktionsbygge till `dist/`
-- `npm test` — kör Vitest
+- `npx vitest run` — kör alla Vitest-tester en gång (`npm test` startar
+  watch-läge och avslutas aldrig)
 - `npx vitest run path/to/file.test.js` — kör ett enskilt testfil
 - `npx vitest -t "test name"` — kör ett enskilt test via namn
 - `npm run deploy` — kör `scripts/deploy.sh`, bygger och rsyncar till NAS:en
@@ -46,7 +48,9 @@ Backend, körs i Docker-containern:
 ### Datalagring (MariaDB)
 
 Schema i `db/schema.sql`: `teams`, `users` (med `team_id`, `is_admin`,
-`password_hash`) och `vacations`. All databasåtkomst går via PDO, kapslad
+`password_hash`), `vacations` och `login_attempts` (inloggningsspärren i
+`app/RateLimit.php`). Kolumnen `users.sso_id` finns i schemat men används
+inte av koden ännu. All databasåtkomst går via PDO, kapslad
 bakom klasser i `app/` (`Db`, `Persons`, m.fl.) så den kan testas isolerat
 med PHPUnit mot `vacation_test`-databasen.
 
@@ -71,7 +75,11 @@ en katalog för statiska Vite-tillgångar.
 
 - **ISO 8601:** veckor börjar måndag; veckonummer = ISO (vecka 1 innehåller årets
   första torsdag). Årsskiften är det viktigaste kantfallet — täck med enhetstester.
-- Visningsintervall anges i **hela månader**, **max 3 månaders spann**.
+- Visningsintervall väljs i **hela månader**, **max 3 månaders spann**.
+  Rutnätet fylls sedan ut till hela ISO-veckor (`weekAlignedRange` i
+  `src/lib/dates.js`): från måndagen på eller före första månaden till
+  söndagen på eller efter sista. Utfyllnadsdagarna är nedtonade och saknar
+  månadsrubrik, och semestrar hämtas för hela det utfyllda intervallet.
 - Personer grupperas under grupp-header-rader. Personer utan `groupId` hamnar i en
   **syntetisk "Ogrupperade"-grupp** som alltid visas sist.
 - Helger (lör/sön) får egen bakgrundsfärg på hela kolumnen.
@@ -95,6 +103,10 @@ en katalog för statiska Vite-tillgångar.
 - UI-text, kodkommentarer och dokumentation på svenska; commit-meddelanden,
   PR-titlar och PR-beskrivningar på engelska. Det följer användarens globala
   regel om att allt utåtriktat ska vara på engelska, oavsett repo.
+- Datum är undantaget från svensk UI-text: de formateras och tolkas enligt
+  användarens föredragna språk (`navigator.languages[0]`, se
+  `src/lib/locale.js` och `src/lib/dateFormat.js`), alltid i gregoriansk
+  kalender. Hårdkoda inte svenska datumformat.
 - Spaces (inte tabbar), CRLF-radslut — utom `.sh`-filer, som ska ha LF
   (se `.gitattributes`).
 - Ren logik (ISO-veckor, kolumngenerering, validering, gruppering) hålls fristående

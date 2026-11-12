@@ -1,15 +1,20 @@
 # vactionnode
 
-Semesterkalender — en Vue 3 + Vite-app där personer matar in sina semesterdagar och ser allas frånvaro i en Excel-liknande kalendervy. Personer organiseras i grupper (team). Backend är PHP 8.2 mot MariaDB, med sessionsbaserad inloggning. Ingen GitHub-koppling längre — data lagras i en riktig databas.
+Semesterkalender — en Vue 3 + Vite-app där personer matar in sina semesterdagar och ser allas frånvaro i en Excel-liknande kalendervy. Personer organiseras i grupper (team). Backend är PHP 8.2 mot MariaDB, med sessionsbaserad inloggning.
 
 ## Funktioner
 
 - Excel-stil kalendervy: månad, ISO-veckonummer, datum + veckodag, helger i egen färg
 - Personer grupperade under grupp-headers (inkl. "Ogrupperade")
-- Inmatning av semester via datumintervall (hela dagar)
-- Visningsintervall i hela månader, max 3 månader åt gången
+- Inmatning av semester via datumintervall (hela dagar), eller genom att klicka
+  på en tom dag — i den egna raden, eller i vems rad som helst för en administratör
+- Visningsintervall i hela månader, max 3 månader åt gången; kalendern fylls ut
+  till hela ISO-veckor (måndag–söndag) med nedtonade utfyllnadsdagar
+- Datum visas och matas in på användarens föredragna språk, med en lokaliserad
+  datumväljare
 - Gruppfilter
-- Inloggning med e-post och lösenord mot databasen
+- Inloggning med e-post och lösenord mot databasen, och byte av eget lösenord
+- Adminsida för konton, grupper och gruppmedlemskap
 
 ## Arkitektur
 
