@@ -27,6 +27,44 @@ final class Http
     {
         self::$testBody = null;
         self::$lastStatus = 0;
+        self::$lastLocation = null;
+        self::$lastCookies = [];
+    }
+
+    private static ?string $lastLocation = null;
+    private static array $lastCookies = [];
+
+    public static function lastLocation(): ?string
+    {
+        return self::$lastLocation;
+    }
+
+    /** @return array<string, array{value: string, options: array}> */
+    public static function lastCookies(): array
+    {
+        return self::$lastCookies;
+    }
+
+    /** Skickar webbläsaren vidare med 302. */
+    public static function redirect(string $url): void
+    {
+        self::$lastStatus = 302;
+        self::$lastLocation = $url;
+        if (PHP_SAPI !== 'cli') {
+            header('Location: ' . $url, true, 302);
+        }
+    }
+
+    /**
+     * setcookie() med samma CLI-undantag som http_response_code() ovan:
+     * under PHPUnit sparas kakan så att testet kan läsa den.
+     */
+    public static function cookie(string $name, string $value, array $options): void
+    {
+        self::$lastCookies[$name] = ['value' => $value, 'options' => $options];
+        if (PHP_SAPI !== 'cli') {
+            setcookie($name, $value, $options);
+        }
     }
 
     public static function json(mixed $data, int $status = 200): void

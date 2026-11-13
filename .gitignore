@@ -6,6 +6,6 @@ dist/
 *.local
 .DS_Store
 .vite/
-config.php
+/config.php
 vendor/
 .phpunit.result.cache

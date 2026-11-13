@@ -18,4 +18,23 @@ return [
     // $_SERVER['HTTPS'] duger inte som automatik: den är tom bakom DSM:s
     // reverse proxy, vilket hade stängt av Secure i produktion.
     'cookie_secure' => true,
+
+    // Microsoft Entra ID-inloggning. Alla fyra värden måste vara ifyllda,
+    // annars är Microsoft-knappen dold och /api/session/sso svarar 404.
+    // App-registreringen ska vara single-tenant, i samma tenant som
+    // tenant_id, som ska vara tenantens GUID (Directory (tenant) ID), inte
+    // ett domännamn. Alla medlemmar i tenanten kan logga in och får ett konto
+    // automatiskt; gästkonton nekas. Begränsa det med "Assignment required" på
+    // Enterprise-appen i Entra ID om bara vissa ska in. Gästkontrollen läser
+    // claimet acct, som måste läggas till som valfritt claim på ID-tokenet
+    // (Token configuration > Add optional claim > ID > acct); utan det nekas
+    // alla inloggningar.
+    'sso' => [
+        'tenant_id'     => '',
+        'client_id'     => '',
+        'client_secret' => '',
+        // Måste vara registrerad i app-registreringen och peka på
+        // /api/session/sso/callback. Lokalt: http://localhost:5173/api/session/sso/callback
+        'redirect_uri'  => 'https://semester.example.com/api/session/sso/callback',
+    ],
 ];

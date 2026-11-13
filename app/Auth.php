@@ -32,7 +32,8 @@ final class Auth
         }
 
         $stmt = $pdo->prepare(
-            'SELECT id, name, email, team_id AS groupId, is_admin AS isAdmin
+            'SELECT id, name, email, team_id AS groupId, is_admin AS isAdmin,
+                    password_hash IS NOT NULL AS hasPassword
              FROM users WHERE id = ?'
         );
         $stmt->execute([$id]);
@@ -42,6 +43,9 @@ final class Auth
         }
 
         $row['isAdmin'] = (bool) $row['isAdmin'];
+        // Microsoft-only-konton saknar lösenord; frontend döljer då
+        // "Byt lösenord", som annars bara hade kunnat misslyckas.
+        $row['hasPassword'] = (bool) $row['hasPassword'];
 
         return $row;
     }
