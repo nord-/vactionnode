@@ -1,8 +1,10 @@
 <?php
 namespace App\Handlers;
 
+use App\Config;
 use App\Http;
 use App\RateLimit;
+use App\Sso\SsoConfig;
 use PDO;
 
 final class SessionHandler
@@ -15,15 +17,20 @@ final class SessionHandler
     // som de riktiga hasharna, så kostnadsfaktorn matchar.
     private const DUMMY_HASH = '$2y$10$Mch47B42oJxevZqkNmE5yeBUHn5XDN8WVOIjuZSn.v9QKo7BMYlLK';
 
-    public function __construct(private PDO $pdo) {}
+    private array $config;
+
+    /** $config finns för testerna; routern skickar bara $pdo. */
+    public function __construct(private PDO $pdo, ?array $config = null)
+    {
+        $this->config = $config ?? Config::load();
+    }
 
     public function login(?array $user, ?string $id = null): void
     {
         $body     = Http::body();
         $email    = strtolower(trim((string) ($body['email'] ?? '')));
         $password = (string) ($body['password'] ?? '');
-        $config   = require dirname(__DIR__, 2) . '/config.php';
-        $ip       = RateLimit::clientIp($config, $_SERVER);
+        $ip       = RateLimit::clientIp($this->config, $_SERVER);
 
         if (RateLimit::tooManyAttempts($this->pdo, $email, $ip)) {
             Http::error('too_many_attempts', 'För många försök. Vänta en stund.', 429);
@@ -44,10 +51,15 @@ final class SessionHandler
         $passwordOk = password_verify($password, $hashExists ? $row['password_hash'] : self::DUMMY_HASH);
 
         // Samma svar oavsett om kontot saknas, saknar lösenord eller har fel
-        // lösenord — annars blir endpointen en kontolista.
+        // lösenord — annars blir endpointen en kontolista. Med SSO påslaget
+        // hänvisar samma meddelande till Microsoft, så att ett konto utan
+        // lösenord inte ser trasigt ut utan att pekas ut.
         if (!$hashExists || !$passwordOk) {
             RateLimit::record($this->pdo, $email, $ip);
-            Http::error('invalid_credentials', 'Fel e-post eller lösenord.', 401);
+            $message = SsoConfig::enabled($this->config)
+                ? 'Fel e-post eller lösenord. Loggar du in med Microsoft? Använd knappen Logga in med Microsoft.'
+                : 'Fel e-post eller lösenord.';
+            Http::error('invalid_credentials', $message, 401);
             return;
         }
 
@@ -65,6 +77,7 @@ final class SessionHandler
 
         unset($row['password_hash']);
         $row['isAdmin'] = (bool) $row['isAdmin'];
+        $row['hasPassword'] = true;
         Http::json($row);
     }
 

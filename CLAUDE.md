@@ -49,8 +49,9 @@ Backend, körs i Docker-containern:
 
 Schema i `db/schema.sql`: `teams`, `users` (med `team_id`, `is_admin`,
 `password_hash`), `vacations` och `login_attempts` (inloggningsspärren i
-`app/RateLimit.php`). Kolumnen `users.sso_id` finns i schemat men används
-inte av koden ännu. All databasåtkomst går via PDO, kapslad
+`app/RateLimit.php`). Kolumnen `users.sso_id` håller Entra ID-tokenets
+`oid` (aldrig `sub`, som är per app och byts om app-registreringen görs
+om). All databasåtkomst går via PDO, kapslad
 bakom klasser i `app/` (`Db`, `Persons`, m.fl.) så den kan testas isolerat
 med PHPUnit mot `vacation_test`-databasen.
 
@@ -65,6 +66,14 @@ en katalog för statiska Vite-tillgångar.
 
 - **Inloggning:** e-post + lösenord mot `users`-tabellen (`password_hash`),
   sessionsbaserad via PHP-sessioner. Hanteras av `app/Auth.php`.
+- **Microsoft (Entra ID):** authorization code flow med PKCE i
+  `app/Handlers/SsoHandler.php`, påslagen när `sso`-blocket i `config.php` är
+  ifyllt. Id-tokenet valideras i `app/Sso/IdToken.php` med `openssl_verify`
+  mot JWKS:ens x5c — ingen JWT-dependency, eftersom `vendor/` inte deployas.
+  `app/Sso/SsoAccounts.php` slår upp kontot på `oid`, sedan e-post (länkar och
+  **rensar lösenordet**), och skapar annars ett konto utan admin och grupp.
+  state/nonce/verifier ligger i en egen `SameSite=Lax`-kaka (`sso_tx`):
+  sessionskakan är `Strict` och följer inte med på redirecten från Microsoft.
 - **Identitet:** inloggad användares `personId` styr vilka semesterposter som
   visas som "mina".
 - Ingen hemlighet bäddas längre in i frontend-bygget — `config.php` på
@@ -88,12 +97,15 @@ en katalog för statiska Vite-tillgångar.
 
 - En vanlig användare får bara skriva sin egen semester.
 - Allt annat — konton, grupper och gruppmedlemskap — kräver administratör.
+  Enda undantaget: när Microsoft-inloggningen är på får alla i tenanten ett
+  konto vid första inloggningen, alltid utan admin och utan grupp (beslut
+  2026-11-12, issue #2).
 - En administratör får därutöver ändra semestern för vem som helst, så att
   rättelser går att göra när någon har slutat eller är borta.
 - Vakten körs i `app/Router.php` före varje handler och upprepas i SQL:et som
   försvar på djupet (`WHERE id = ? AND (user_id = ? OR ? = 1)` i
   `app/Handlers/VacationHandler.php`); `tests-php/GuardMatrixTest.php` är
-  fjortonradstabellen som bevisar det.
+  tabellen som bevisar det.
 - Appen är publikt exponerad — försvaga inte den här vakten utan att först
   ändra specen.
 

@@ -14,6 +14,8 @@ Semesterkalender — en Vue 3 + Vite-app där personer matar in sina semesterdag
   datumväljare
 - Gruppfilter
 - Inloggning med e-post och lösenord mot databasen, och byte av eget lösenord
+- Inloggning med Microsoft (Entra ID), med automatiskt konto för alla i
+  tenanten — se "Microsoft-inloggning" nedan
 - Adminsida för konton, grupper och gruppmedlemskap
 
 ## Arkitektur
@@ -64,6 +66,29 @@ docker compose -f docker/docker-compose.yml exec php php db/create-admin.php
 ```
 
 Skriptet frågar efter namn, e-post och lösenord och skapar en administratör.
+
+### Microsoft-inloggning
+
+Slås på genom att fylla i `sso`-blocket i `config.php` (se
+`config.php.example`). Det kräver en single-tenant app-registrering i Entra ID
+med en klienthemlighet och en redirect-URI av typen *Web* per miljö:
+produktionens `https://…/api/session/sso/callback` och, för lokal utveckling,
+`http://localhost:5173/api/session/sso/callback` (Vites port — proxyn skickar
+anropet vidare till PHP). Entra ID tillåter `http` bara för `localhost`.
+
+Kontot slås upp i tre steg: på `sso_id` (tokenets `oid`), sedan på e-post —
+då länkas kontot och dess lösenord rensas — och annars skapas ett nytt konto
+utan admin och utan grupp. Alla i tenanten kommer alltså in; ska bara vissa
+in, sätt *Assignment required* på Enterprise-appen och tilldela dem där.
+Gästanvändare (B2B-gäster och personliga Microsoft-konton) nekas: deras
+e-post är overifierad och hade kunnat länka någon annans konto.
+
+App-registreringen måste ha det valfria claimet `acct` på ID-tokenet (*Token
+configuration* > *Add optional claim* > *ID* > `acct`). Gästkontrollen kräver
+den och nekar all inloggning om den saknas.
+
+Servern behöver PHP:s `openssl` och `allow_url_fopen` påslaget — tokenbytet
+och nyckelhämtningen går via streams, inte curl.
 
 ### Testsviter
 

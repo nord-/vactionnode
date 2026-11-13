@@ -47,6 +47,32 @@ final class GuardMatrixTest extends ApiTestCase
             'personer anonym'      => ['POST',   '/api/persons',          $name,  null,      401],
             'grupper ej admin'     => ['PUT',    '/api/groups/g-team',    $name,  'g-owner', 403],
             'grupper anonym'       => ['DELETE', '/api/groups/g-team',    null,   null,      401],
+            // Microsoft-inloggningen är publik per definition. start och
+            // callback ligger inte här: deras status beror på den lokala
+            // config.php (404 utan sso-block), se testSsoRoutesNeedNoSession.
+            'inloggningsval anon'  => ['GET',    '/api/session/options',  null,   null,      200],
+        ];
+    }
+
+    /**
+     * Vakten ska släppa igenom en anonym request till SSO-vägarna, vad
+     * handlern sedan svarar. Statusen beror på om config.php har ett
+     * sso-block, så testet kräver bara att svaret inte är en vaktavvisning.
+     *
+     * @dataProvider ssoRoutes
+     */
+    public function testSsoRoutesNeedNoSession(string $path): void
+    {
+        $res = $this->request('GET', $path);
+
+        $this->assertNotContains($res['status'], [0, 401, 403], "GET $path anonym");
+    }
+
+    public static function ssoRoutes(): array
+    {
+        return [
+            'start'    => ['/api/session/sso'],
+            'callback' => ['/api/session/sso/callback'],
         ];
     }
 }

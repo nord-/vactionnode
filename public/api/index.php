@@ -14,7 +14,7 @@ spl_autoload_register(static function (string $class): void {
     }
 });
 
-$config = require dirname(__DIR__, 2) . '/config.php';
+$config = App\Config::load();
 
 App\Auth::start($config);
 

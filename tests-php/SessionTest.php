@@ -1,6 +1,8 @@
 <?php
 namespace Tests;
 
+use App\Handlers\SessionHandler;
+use App\Http;
 use App\RateLimit;
 
 final class SessionTest extends ApiTestCase
@@ -94,6 +96,46 @@ final class SessionTest extends ApiTestCase
         // Alla tre avvisningsgrenarna ska konvergera till samma svarskropp —
         // inte bara samma statuskod — annars blir endpointen en kontolista.
         $this->assertSame($wrong['json'], $res['json']);
+    }
+
+    /**
+     * Ett Microsoft-only-konto får inte se trasigt ut i lösenordsformuläret.
+     * Hänvisningen står i det gemensamma felmeddelandet — ett eget svar för
+     * NULL-hash hade avslöjat vilka e-postadresser som har konton.
+     */
+    public function testFailedPasswordLoginPointsAtMicrosoftWhenSsoIsOn(): void
+    {
+        $this->pdo->exec("INSERT INTO users (id, name, email, sso_id, password_hash)
+                          VALUES ('s7', 'Hugo', 'hugo@example.com', 'oid-hugo', NULL)");
+        $config = ['sso' => ['tenant_id' => 't', 'client_id' => 'c', 'client_secret' => 's', 'redirect_uri' => 'r']];
+        $handler = new SessionHandler($this->pdo, $config);
+
+        $sso     = $this->login($handler, 'hugo@example.com');
+        $unknown = $this->login($handler, 'finns.inte@example.com');
+
+        $this->assertSame(401, Http::lastStatus());
+        $this->assertStringContainsString('Microsoft', $sso['error']['message']);
+        $this->assertSame($sso, $unknown);
+    }
+
+    public function testSessionTellsWhetherTheAccountHasAPassword(): void
+    {
+        $this->seedUser('s8', 'ida@example.com', 'hemligt123');
+        $this->pdo->exec("INSERT INTO users (id, name, email, sso_id, password_hash)
+                          VALUES ('s9', 'Jon', 'jon@example.com', 'oid-jon', NULL)");
+
+        $this->assertTrue($this->request('GET', '/api/session', null, 's8')['json']['hasPassword']);
+        $this->assertFalse($this->request('GET', '/api/session', null, 's9')['json']['hasPassword']);
+    }
+
+    private function login(SessionHandler $handler, string $email): array
+    {
+        Http::resetTestState();
+        Http::setTestBody(json_encode(['email' => $email, 'password' => 'vadsomhelst']));
+        ob_start();
+        $handler->login(null);
+
+        return json_decode(ob_get_clean(), true);
     }
 
     public function testForwardedForIsIgnoredWhenSenderIsNotTrusted(): void
