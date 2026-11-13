@@ -1,6 +1,6 @@
 <template>
   <!-- Steg 1: inloggning -->
-  <LoginView v-if="!user" :error="loginError" @submit="onLogin" />
+  <LoginView v-if="!user" :error="loginError" :microsoft="microsoftLogin" @submit="onLogin" />
 
   <!-- Steg 2: huvudvy -->
   <div v-else class="p-4 max-w-full min-h-screen bg-base-200">
@@ -29,7 +29,8 @@
             </li>
             <!-- Ett tomt <li> ritas som avdelare i daisyUI:s menu. -->
             <li></li>
-            <li>
+            <!-- Microsoft-only-konton har inget lösenord att byta. -->
+            <li v-if="user.hasPassword !== false">
               <button data-testid="menu-change-password" @click="openChangePassword">
                 <span class="mdi mdi-key"></span> Byt lösenord
               </button>
@@ -118,7 +119,9 @@ import { createApiClient } from './lib/apiClient.js';
 import { createDataStore } from './lib/dataStore.js';
 import { createStore } from './composables/useStore.js';
 import { defaultRange, monthRangeToDates } from './composables/useDefaultRange.js';
-import { login, logout, currentUser, changePassword } from './lib/auth.js';
+import {
+  login, logout, currentUser, changePassword, loginOptions, ssoErrorMessage, splitSsoError,
+} from './lib/auth.js';
 import LoginView from './components/LoginView.vue';
 import { useHashRoute } from './composables/useHashRoute.js';
 import ChangePasswordModal from './components/ChangePasswordModal.vue';
@@ -216,13 +219,26 @@ function reload() {
   return store.refresh(from, to);
 }
 
+const microsoftLogin = ref(false);
+
+function takeSsoError() {
+  const { code, url } = splitSsoError(window.location.href);
+  if (code === null) return;
+
+  window.history.replaceState(null, '', url);
+  loginError.value = ssoErrorMessage(code);
+}
+
 onMounted(async () => {
+  takeSsoError();
   try {
     user.value = await currentUser(api);
   } catch {
     user.value = null;
   }
-  if (user.value) await reload();
+  // Hämtas även för en inloggad användare: knappen behövs efter utloggning.
+  const [options] = await Promise.all([loginOptions(api), user.value ? reload() : null]);
+  microsoftLogin.value = options.microsoft;
 });
 
 watch(range, reload);
