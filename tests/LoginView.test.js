@@ -16,6 +16,18 @@ describe('LoginView', () => {
     });
   });
 
+  it('länkar till Microsoft-inloggningen när den är påslagen', () => {
+    const wrapper = mount(LoginView, { props: { microsoft: true } });
+
+    expect(wrapper.find('[data-testid="microsoft"]').attributes('href')).toBe('/api/session/sso');
+  });
+
+  it('visar ingen Microsoft-knapp när inloggningen är avstängd', () => {
+    const wrapper = mount(LoginView);
+
+    expect(wrapper.find('[data-testid="microsoft"]').exists()).toBe(false);
+  });
+
   it('visar serverns felmeddelande i stället för en fast text', () => {
     const wrapper = mount(LoginView, {
       props: { error: 'För många försök. Vänta en stund.' },

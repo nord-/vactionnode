@@ -306,3 +306,61 @@ describe('App – meny och sidor', () => {
     expect(wrapper.find('input[type="email"]').exists()).toBe(true);
   });
 });
+
+describe('App – Microsoft-inloggning', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+    window.history.replaceState(null, '', '/');
+  });
+
+  // Ingen session; /session/options säger om Microsoft är påslaget.
+  function stubLoggedOut(microsoft) {
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url.includes('/api/session/options')) return jsonResponse({ microsoft });
+      if (url.includes('/api/session')) {
+        return jsonResponse({ error: { code: 'unauthenticated', message: 'Logga in.' } }, 401);
+      }
+      return jsonResponse({}, 200);
+    }));
+  }
+
+  it('visar Microsoft-knappen när servern säger att den är påslagen', async () => {
+    stubLoggedOut(true);
+
+    const wrapper = mount(App);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="microsoft"]').exists()).toBe(true);
+  });
+
+  it('visar felet från en misslyckad Microsoft-inloggning och tar bort det ur adressen', async () => {
+    window.history.replaceState(null, '', '/?sso_error=denied#/');
+    stubLoggedOut(true);
+
+    const wrapper = mount(App);
+    await flushPromises();
+
+    expect(wrapper.text()).toContain('Inloggningen med Microsoft avbröts.');
+    expect(window.location.search).toBe('');
+    expect(window.location.hash).toBe('#/');
+  });
+
+  it('döljer Byt lösenord för ett konto som bara loggar in med Microsoft', async () => {
+    const me = { id: 'p1', name: 'Anna', email: 'anna@example.com', groupId: null,
+                 isAdmin: false, hasPassword: false };
+    vi.stubGlobal('fetch', vi.fn(async (url) => {
+      if (url.includes('/api/session')) return jsonResponse(me);
+      if (url.includes('/api/bootstrap')) {
+        return jsonResponse({ me, groups: [], persons: [me], vacations: [] });
+      }
+      return jsonResponse({}, 200);
+    }));
+
+    const wrapper = mount(App);
+    await flushPromises();
+
+    expect(wrapper.find('[data-testid="menu-logout"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="menu-change-password"]').exists()).toBe(false);
+  });
+});

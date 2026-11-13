@@ -18,17 +18,31 @@
       />
       <p v-if="error" class="text-error text-sm mb-2">{{ error }}</p>
       <button type="submit" class="btn btn-primary w-full">Logga in</button>
+      <!-- En vanlig länk, inte fetch: Microsoft-inloggningen är en
+           helsidesnavigering som slutar med en redirect tillbaka hit. -->
+      <template v-if="microsoft">
+        <div class="divider text-sm opacity-70">eller</div>
+        <a data-testid="microsoft" :href="ssoUrl" class="btn btn-outline w-full">
+          <span class="mdi mdi-microsoft"></span> Logga in med Microsoft
+        </a>
+      </template>
     </form>
   </div>
 </template>
 
 <script setup>
 import { ref } from 'vue';
+import config from '../config.js';
 
 // error är nu en sträng från servern, inte en boolean. Meddelandet skiljer på
 // fel lösenord, spärrat konto och nätverksfel — den gamla fasta texten
 // "Fel lösenord" hade varit direkt missvisande vid 429.
-defineProps({ error: { type: String, default: null } });
+defineProps({
+  error: { type: String, default: null },
+  // Servern säger om Microsoft-inloggningen är konfigurerad.
+  microsoft: { type: Boolean, default: false },
+});
+const ssoUrl = `${config.apiBaseUrl}/session/sso`;
 const emit = defineEmits(['submit']);
 
 const email = ref('');
