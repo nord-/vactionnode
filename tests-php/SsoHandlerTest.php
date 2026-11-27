@@ -176,6 +176,20 @@ final class SsoHandlerTest extends ApiTestCase
         $this->assertArrayNotHasKey('user_id', $res['session']);
     }
 
+    public function testTransportFailureRedirectsWithProviderError(): void
+    {
+        [$query, $cookies] = $this->begin();
+        $handler = new SsoHandler($this->pdo, $this->config(), static function (): array {
+            throw new \App\TransportException('nere');
+        });
+
+        $res = $this->call($handler, 'callback', $query, $cookies);
+
+        $this->assertSame(302, $res['status']);
+        $this->assertSame('/?sso_error=provider_error', $res['location']);
+        $this->assertArrayNotHasKey('user_id', $res['session']);
+    }
+
     public function testMemberWhoseIdpIsTheOwnTenantSignsIn(): void
     {
         [$query, $cookies, $nonce] = $this->begin();

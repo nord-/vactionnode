@@ -1,10 +1,11 @@
 <?php
-namespace App\Sso;
+namespace App;
 
 /**
- * HTTPS-anrop mot Entra ID. Går via PHP:s streams i stället för curl — curl
- * är ett tillägg som måste slås på i Web Stations PHP-profil, medan
- * streams bara kräver openssl, som inloggningen behöver ändå.
+ * HTTPS-anrop som returnerar JSON (Entra ID, helgdagsimporten). Går via PHP:s
+ * streams i stället för curl — curl är ett tillägg som måste slås på i Web
+ * Stations PHP-profil, medan streams bara kräver openssl, som inloggningen
+ * behöver ändå.
  */
 final class Transport
 {
@@ -14,7 +15,7 @@ final class Transport
      * GET när $form är null, annars POST som application/x-www-form-urlencoded.
      *
      * @return array det avkodade JSON-svaret
-     * @throws SsoException
+     * @throws TransportException
      */
     public static function request(string $url, ?array $form = null): array
     {
@@ -37,10 +38,10 @@ final class Transport
 
         $data = is_string($body) ? json_decode($body, true) : null;
         if ($status !== 200 || !is_array($data)) {
-            // Entra ID:s felsvar har error och error_description; tokenet
+            // Leverantörens felsvar har error och error_description; tokenet
             // eller hemligheten finns aldrig i dem, så de är säkra att logga.
             $detail = is_array($data) ? ($data['error_description'] ?? $data['error'] ?? '') : '';
-            throw new SsoException('provider_error', "Entra ID svarade $status på $url. $detail");
+            throw new TransportException(trim("$url svarade $status. $detail"));
         }
 
         return $data;
