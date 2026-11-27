@@ -9,7 +9,8 @@ use App\Sso\IdToken;
 use App\Sso\SsoAccounts;
 use App\Sso\SsoConfig;
 use App\Sso\SsoException;
-use App\Sso\Transport;
+use App\Transport;
+use App\TransportException;
 use Closure;
 use PDO;
 
@@ -39,7 +40,16 @@ final class SsoHandler
     public function __construct(private PDO $pdo, ?array $config = null, ?callable $http = null)
     {
         $this->config = $config ?? Config::load();
-        $this->http = Closure::fromCallable($http ?? [Transport::class, 'request']);
+        // Transportfel (token och JWKS) blir provider_error; andra fel
+        // passerar orörda och slutar som server_error.
+        $inner = Closure::fromCallable($http ?? [Transport::class, 'request']);
+        $this->http = static function (...$args) use ($inner): array {
+            try {
+                return $inner(...$args);
+            } catch (TransportException $e) {
+                throw new SsoException('provider_error', $e->getMessage());
+            }
+        };
     }
 
     /** Inloggningssidan frågar om Microsoft-knappen ska visas. */
