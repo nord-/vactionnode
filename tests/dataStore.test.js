@@ -62,4 +62,21 @@ describe('dataStore', () => {
       { personId: 'p1', start: '2026-06-16', end: '2026-06-20' });
     expect(row).toEqual(created);
   });
+
+  it('hämtar och ändrar helgdagar mot rätt väg', async () => {
+    const api = fakeApi();
+    const store = createDataStore({ api });
+
+    await store.listHolidays(2027);
+    await store.addHoliday('2027-06-25', 'Midsommarafton');
+    await store.renameHoliday('h1', 'Nytt namn');
+    await store.removeHoliday('h1');
+    await store.importHolidays(2027);
+
+    expect(api.get).toHaveBeenCalledWith('/holidays?year=2027');
+    expect(api.post).toHaveBeenCalledWith('/holidays', { date: '2027-06-25', name: 'Midsommarafton' });
+    expect(api.put).toHaveBeenCalledWith('/holidays/h1', { name: 'Nytt namn' });
+    expect(api.del).toHaveBeenCalledWith('/holidays/h1');
+    expect(api.post).toHaveBeenCalledWith('/holidays/import', { year: 2027 });
+  });
 });

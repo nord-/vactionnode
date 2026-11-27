@@ -82,6 +82,7 @@
             :groups="store.groups.value"
             :persons="store.persons.value"
             :vacations="store.vacations.value"
+            :holidays="store.holidays.value"
             :from-month="range.from"
             :to-month="range.to"
             :group-filter-id="groupFilterId"
@@ -139,6 +140,7 @@ function clearSessionState() {
   store.groups.value = [];
   store.persons.value = [];
   store.vacations.value = [];
+  store.holidays.value = [];
   store.me.value = null;
   store.error.value = null;
   changePasswordOpen.value = false;

@@ -33,10 +33,12 @@
             v-for="col in columns"
             :key="col.iso"
             data-testid="day-header"
+            :data-date="col.iso"
+            :title="col.holidayName"
             class="px-1 text-center align-top w-8"
-            :class="[col.isWeekend ? 'bg-base-300' : 'bg-base-100', { 'opacity-60': !col.inSelectedMonths }]"
+            :class="[col.isWeekend || col.holidayName ? 'bg-base-300' : 'bg-base-100', { 'opacity-60': !col.inSelectedMonths }]"
           >
-            <div class="font-semibold leading-tight">{{ col.day }}</div>
+            <div class="font-semibold leading-tight" :class="{ 'text-error': col.holidayName }">{{ col.day }}</div>
             <div class="text-[10px] opacity-70 leading-tight">{{ col.weekdayLabel }}</div>
           </th>
         </tr>
@@ -74,12 +76,14 @@
 import { computed } from 'vue';
 import { generateColumns } from '../lib/dates.js';
 import { groupPersons } from '../lib/grouping.js';
+import { holidayMap } from '../lib/holidays.js';
 import { vacationForCell } from '../lib/vacationLookup.js';
 
 const props = defineProps({
   groups: { type: Array, required: true },
   persons: { type: Array, required: true },
   vacations: { type: Array, required: true },
+  holidays: { type: Array, default: () => [] },
   fromMonth: { type: String, required: true },
   toMonth: { type: String, required: true },
   groupFilterId: { type: [String, null], default: 'all' },
@@ -91,7 +95,15 @@ const props = defineProps({
 
 const emit = defineEmits(['edit-vacation', 'add-vacation']);
 
-const columns = computed(() => generateColumns(props.fromMonth, props.toMonth));
+// Helgdagsnamnet läggs på kolumnerna här i stället för i dates.js, som
+// förblir ren kalenderlogik utan kännedom om helgdagar.
+const columns = computed(() => {
+  const names = holidayMap(props.holidays);
+  return generateColumns(props.fromMonth, props.toMonth).map((col) => ({
+    ...col,
+    holidayName: names.get(col.iso) ?? null,
+  }));
+});
 
 const filteredPersons = computed(() => {
   if (props.groupFilterId === 'all' || props.groupFilterId === undefined) return props.persons;
@@ -153,7 +165,7 @@ function cellClass(personId, col) {
   if (isVacation(personId, col.iso)) {
     return props.canAddFor(personId) ? 'bg-success cursor-pointer' : 'bg-success';
   }
-  const classes = [col.isWeekend ? 'bg-base-300' : ''];
+  const classes = [col.isWeekend || col.holidayName ? 'bg-base-300' : ''];
   if (props.canAddFor(personId)) classes.push('cursor-pointer hover:bg-primary/20');
   return classes;
 }
