@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isoWeekNumber, isoWeekYear, enumerateMonths, monthSpanCount, generateColumns, weekAlignedRange } from '../src/lib/dates.js';
+import { isoWeekNumber, isoWeekYear, enumerateMonths, monthSpanCount, shiftMonthRange, generateColumns, weekAlignedRange } from '../src/lib/dates.js';
 
 describe('isoWeekNumber', () => {
   it('2025-06-16 (måndag) är vecka 25', () => {
@@ -116,5 +116,17 @@ describe('generateColumns över årsskiftet bakåt', () => {
     expect(dec28).toMatchObject({ iso: '2026-12-28', isoWeek: 53, isoWeekYear: 2026, inSelectedMonths: false });
     expect(jan3).toMatchObject({ isoWeek: 53, isoWeekYear: 2026, inSelectedMonths: true });
     expect(jan4).toMatchObject({ isoWeek: 1, isoWeekYear: 2027 });
+  });
+});
+
+describe('shiftMonthRange', () => {
+  it('flyttar hela intervallet en månad framåt och behåller spannet', () => {
+    expect(shiftMonthRange({ from: '2025-06', to: '2025-08' }, 1)).toEqual({ from: '2025-07', to: '2025-09' });
+  });
+  it('flyttar bakåt över årsskiftet', () => {
+    expect(shiftMonthRange({ from: '2027-01', to: '2027-03' }, -1)).toEqual({ from: '2026-12', to: '2027-02' });
+  });
+  it('flyttar framåt över årsskiftet', () => {
+    expect(shiftMonthRange({ from: '2026-11', to: '2026-12' }, 1)).toEqual({ from: '2026-12', to: '2027-01' });
   });
 });

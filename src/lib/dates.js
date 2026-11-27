@@ -41,6 +41,12 @@ export function monthSpanCount(fromMonth, toMonth) {
   return monthIndex(toMonth) - monthIndex(fromMonth) + 1;
 }
 
+// Flyttar hela intervallet delta månader (negativt = bakåt) och behåller
+// spannets längd. Går över årsskiften.
+export function shiftMonthRange({ from, to }, delta) {
+  return { from: formatMonth(monthIndex(from) + delta), to: formatMonth(monthIndex(to) + delta) };
+}
+
 export function enumerateMonths(fromMonth, toMonth) {
   const result = [];
   for (let i = monthIndex(fromMonth); i <= monthIndex(toMonth); i++) {
