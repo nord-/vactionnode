@@ -124,18 +124,23 @@ describe('CalendarGrid', () => {
       expect(h.find('.text-error').exists()).toBe(true);
     });
 
-    it('tonar ned en semesterdag som infaller på en helgdag', () => {
+    it('tonar ned en semesterdag som infaller på en helgdag eller en helg', () => {
       const w = mountGrid({
         fromMonth: '2027-06',
         toMonth: '2027-06',
         holidays,
-        vacations: [{ id: 'v2', personId: 'p1', start: '2027-06-24', end: '2027-06-26' }],
+        vacations: [{ id: 'v2', personId: 'p1', start: '2027-06-24', end: '2027-06-28' }],
       });
       expect(cellOf(w, '2027-06-24').classes()).toContain('bg-success');
       expect(cellOf(w, '2027-06-24').classes()).not.toContain('bg-success/40');
       expect(cellOf(w, '2027-06-25').classes()).toContain('bg-success/40');
       expect(cellOf(w, '2027-06-25').classes()).not.toContain('bg-success');
       expect(cellOf(w, '2027-06-25').attributes('data-vacation')).toBe('true');
+      // Lördag och söndag är inga helgdagar i tabellen men tonas ned på samma sätt.
+      expect(cellOf(w, '2027-06-26').classes()).toContain('bg-success/40');
+      expect(cellOf(w, '2027-06-27').classes()).toContain('bg-success/40');
+      expect(cellOf(w, '2027-06-28').classes()).toContain('bg-success');
+      expect(cellOf(w, '2027-06-28').classes()).not.toContain('bg-success/40');
     });
   });
 });
