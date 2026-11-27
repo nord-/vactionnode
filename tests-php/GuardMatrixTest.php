@@ -12,6 +12,7 @@ final class GuardMatrixTest extends ApiTestCase
         $this->pdo->exec("INSERT INTO vacations (id, user_id, start_date, end_date)
                           VALUES ('g-vac', 'g-owner', '2026-06-16', '2026-06-20')");
         $this->pdo->exec("INSERT INTO teams (id, name) VALUES ('g-team', 'Team A')");
+        $this->pdo->exec("INSERT INTO holidays (id, date, name) VALUES ('g-hol', '2027-01-01', 'Nyårsdagen')");
     }
 
     /**
@@ -31,6 +32,8 @@ final class GuardMatrixTest extends ApiTestCase
     {
         $dates = ['start' => '2026-06-16', 'end' => '2026-06-20'];
         $name  = ['name' => 'Nytt'];
+        $holiday = ['date' => '2027-12-24', 'name' => 'Julafton'];
+        $import  = ['year' => 1999];
 
         return [
             'bootstrap anonym'     => ['GET',    '/api/bootstrap',        null,   null,      401],
@@ -47,6 +50,23 @@ final class GuardMatrixTest extends ApiTestCase
             'personer anonym'      => ['POST',   '/api/persons',          $name,  null,      401],
             'grupper ej admin'     => ['PUT',    '/api/groups/g-team',    $name,  'g-owner', 403],
             'grupper anonym'       => ['DELETE', '/api/groups/g-team',    null,   null,      401],
+            'helgdagar lista anon'   => ['GET',    '/api/holidays?year=2027', null,   null,      401],
+            'helgdagar lista ej adm' => ['GET',    '/api/holidays?year=2027', null,   'g-other', 403],
+            'helgdagar lista admin'  => ['GET',    '/api/holidays?year=2027', null,   'g-admin', 200],
+            'helgdagar skapa anon'   => ['POST',   '/api/holidays', $holiday,         null,      401],
+            'helgdagar skapa ej adm' => ['POST',   '/api/holidays', $holiday,         'g-other', 403],
+            'helgdagar skapa admin'  => ['POST',   '/api/holidays', $holiday,         'g-admin', 201],
+            'helgdagar ändra anon'   => ['PUT',    '/api/holidays/g-hol', $name,      null,      401],
+            'helgdagar ändra ej adm' => ['PUT',    '/api/holidays/g-hol', $name,      'g-other', 403],
+            'helgdagar ändra admin'  => ['PUT',    '/api/holidays/g-hol', $name,      'g-admin', 200],
+            'helgdagar radera anon'  => ['DELETE', '/api/holidays/g-hol', null,       null,      401],
+            'helgdagar radera ej adm' => ['DELETE', '/api/holidays/g-hol', null,      'g-other', 403],
+            'helgdagar radera admin' => ['DELETE', '/api/holidays/g-hol', null,       'g-admin', 200],
+            'helgdagar import anon'  => ['POST',   '/api/holidays/import', $import,   null,      401],
+            'helgdagar import ej adm' => ['POST',  '/api/holidays/import', $import,   'g-other', 403],
+            // Medveten avvikelse från "admin -> 2xx": inget test får anropa
+            // Nager. 422 (ogiltigt år) bevisar att vakten släppte igenom.
+            'helgdagar import admin' => ['POST',   '/api/holidays/import', $import,   'g-admin', 422],
             // Microsoft-inloggningen är publik per definition. start och
             // callback ligger inte här: deras status beror på den lokala
             // config.php (404 utan sso-block), se testSsoRoutesNeedNoSession.

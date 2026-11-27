@@ -68,6 +68,22 @@ final class BootstrapTest extends ApiTestCase
         $this->assertSame(422, $res['status']);
     }
 
+    public function testHolidaysAreFilteredToRange(): void
+    {
+        $this->pdo->exec("INSERT INTO users (id, name, email, password_hash)
+                          VALUES ('b6', 'Fia', 'fia@example.com', 'x')");
+        $this->pdo->exec("INSERT INTO holidays (id, date, name) VALUES
+            ('hb1', '2026-06-06', 'Sveriges nationaldag'),
+            ('hb2', '2026-12-24', 'Julafton')");
+
+        $res = $this->request('GET', '/api/bootstrap?from=2026-06-01&to=2026-06-30', null, 'b6');
+
+        $this->assertSame(
+            [['id' => 'hb1', 'date' => '2026-06-06', 'name' => 'Sveriges nationaldag']],
+            $res['json']['holidays']
+        );
+    }
+
     public function testMalformedDateStringReturns422(): void
     {
         $this->pdo->exec("INSERT INTO users (id, name, email, password_hash)
