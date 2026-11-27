@@ -123,5 +123,19 @@ describe('CalendarGrid', () => {
       expect(h.attributes('title')).toBe('Alla helgons dag');
       expect(h.find('.text-error').exists()).toBe(true);
     });
+
+    it('tonar ned en semesterdag som infaller på en helgdag', () => {
+      const w = mountGrid({
+        fromMonth: '2027-06',
+        toMonth: '2027-06',
+        holidays,
+        vacations: [{ id: 'v2', personId: 'p1', start: '2027-06-24', end: '2027-06-26' }],
+      });
+      expect(cellOf(w, '2027-06-24').classes()).toContain('bg-success');
+      expect(cellOf(w, '2027-06-24').classes()).not.toContain('bg-success/40');
+      expect(cellOf(w, '2027-06-25').classes()).toContain('bg-success/40');
+      expect(cellOf(w, '2027-06-25').classes()).not.toContain('bg-success');
+      expect(cellOf(w, '2027-06-25').attributes('data-vacation')).toBe('true');
+    });
   });
 });

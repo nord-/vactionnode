@@ -163,7 +163,9 @@ function isVacation(personId, iso) {
 
 function cellClass(personId, col) {
   if (isVacation(personId, col.iso)) {
-    return props.canAddFor(personId) ? 'bg-success cursor-pointer' : 'bg-success';
+    // En semesterdag på en helgdag tonas ned, så att helgdagen syns igenom.
+    const color = col.holidayName ? 'bg-success/40' : 'bg-success';
+    return props.canAddFor(personId) ? `${color} cursor-pointer` : color;
   }
   const classes = [col.isWeekend || col.holidayName ? 'bg-base-300' : ''];
   if (props.canAddFor(personId)) classes.push('cursor-pointer hover:bg-primary/20');
