@@ -25,6 +25,19 @@ describe('useStore', () => {
     expect(store.error.value).toBe(null);
   });
 
+  it('refresh sätter helgdagar från bootstrap, och en tom lista utan fältet', async () => {
+    const holidays = [{ id: 'h1', date: '2027-06-25', name: 'Midsommarafton' }];
+    const store = createStore(fakeDataStore({
+      bootstrap: vi.fn().mockResolvedValue({ me: null, groups: [], persons: [], vacations: [], holidays }),
+    }));
+    await store.refresh('2027-06-01', '2027-06-30');
+    expect(store.holidays.value).toEqual(holidays);
+
+    const bare = createStore(fakeDataStore());
+    await bare.refresh('2027-06-01', '2027-06-30');
+    expect(bare.holidays.value).toEqual([]);
+  });
+
   it('sätter error vid läsfel', async () => {
     const ds = fakeDataStore({
       bootstrap: vi.fn().mockRejectedValue(new Error('nätverk')),

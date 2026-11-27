@@ -38,5 +38,21 @@ export function createDataStore({ api }) {
     removeVacation(id) {
       return api.del(`/vacations/${id}`);
     },
+
+    listHolidays(year) {
+      return api.get(`/holidays?year=${year}`);
+    },
+    addHoliday(date, name) {
+      return api.post('/holidays', { date, name });
+    },
+    renameHoliday(id, name) {
+      return api.put(`/holidays/${id}`, { name });
+    },
+    removeHoliday(id) {
+      return api.del(`/holidays/${id}`);
+    },
+    importHolidays(year) {
+      return api.post('/holidays/import', { year });
+    },
   };
 }

@@ -78,4 +78,50 @@ describe('CalendarGrid', () => {
     expect(w.text()).toContain('Björn');
     expect(w.text()).not.toContain('Anna');
   });
+
+  describe('helgdagar', () => {
+    const holidays = [
+      { id: 'h1', date: '2027-06-25', name: 'Midsommarafton' },
+      { id: 'h2', date: '2027-06-06', name: 'Sveriges nationaldag' },
+      { id: 'h3', date: '2027-11-06', name: 'Alla helgons dag' },
+    ];
+    const headers = (w) => w.findAll('[data-testid="day-header"]');
+    const header = (w, iso) => headers(w).find((h) => h.attributes('data-date') === iso);
+    const cellOf = (w, iso) => {
+      const idx = headers(w).findIndex((h) => h.attributes('data-date') === iso);
+      return w.findAll('tbody tr')[1].findAll('td')[idx + 1];
+    };
+    const mountJune = () => mountGrid({ fromMonth: '2027-06', toMonth: '2027-06', holidays });
+
+    it('markerar helgdagens rubrik med bakgrund, title och röd siffra', () => {
+      const h = header(mountJune(), '2027-06-25');
+      expect(h.classes()).toContain('bg-base-300');
+      expect(h.attributes('title')).toBe('Midsommarafton');
+      expect(h.find('.text-error').exists()).toBe(true);
+    });
+    it('lämnar en vanlig vardag orörd', () => {
+      const h = header(mountJune(), '2027-06-23');
+      expect(h.classes()).not.toContain('bg-base-300');
+      expect(h.attributes('title')).toBeUndefined();
+      expect(h.find('.text-error').exists()).toBe(false);
+    });
+    it('ger cellerna i helgdagskolumnen bakgrund', () => {
+      expect(cellOf(mountJune(), '2027-06-25').classes()).toContain('bg-base-300');
+    });
+    it('nedtonar bara rubriken för en helgdag i utfyllnaden', () => {
+      const w = mountGrid({ fromMonth: '2027-05', toMonth: '2027-05', holidays });
+      const h = header(w, '2027-06-06');
+      expect(h.classes()).toContain('opacity-60');
+      expect(h.attributes('title')).toBe('Sveriges nationaldag');
+      const cell = cellOf(w, '2027-06-06');
+      expect(cell.classes()).toContain('bg-base-300');
+      expect(cell.classes()).not.toContain('opacity-60');
+    });
+    it('ger en helgdag på lördag rött och title', () => {
+      const w = mountGrid({ fromMonth: '2027-11', toMonth: '2027-11', holidays });
+      const h = header(w, '2027-11-06');
+      expect(h.attributes('title')).toBe('Alla helgons dag');
+      expect(h.find('.text-error').exists()).toBe(true);
+    });
+  });
 });

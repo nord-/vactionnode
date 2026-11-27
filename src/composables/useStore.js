@@ -4,6 +4,7 @@ export function createStore(dataStore) {
   const groups = ref([]);
   const persons = ref([]);
   const vacations = ref([]);
+  const holidays = ref([]);
   const me = ref(null);
   const loading = ref(false);
   const error = ref(null);
@@ -19,6 +20,7 @@ export function createStore(dataStore) {
       groups.value = data.groups;
       persons.value = data.persons;
       vacations.value = data.vacations;
+      holidays.value = data.holidays ?? [];
     } catch (e) {
       error.value = e.message || 'Ett fel uppstod vid laddning.';
     } finally {
@@ -47,7 +49,7 @@ export function createStore(dataStore) {
   }
 
   return {
-    groups, persons, vacations, me, loading, error, refresh,
+    groups, persons, vacations, holidays, me, loading, error, refresh,
 
     addGroup: mutate(async (name) => replace(groups, await dataStore.addGroup(name))),
     renameGroup: mutate(async (id, name) => replace(groups, await dataStore.renameGroup(id, name))),
