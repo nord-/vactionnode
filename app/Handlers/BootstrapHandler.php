@@ -2,6 +2,7 @@
 namespace App\Handlers;
 
 use App\Dates;
+use App\Holidays\Holidays;
 use App\Http;
 use App\HttpException;
 use PDO;
@@ -40,11 +41,14 @@ final class BootstrapHandler
         );
         $stmt->execute([$to, $from]);
 
+        $vacations = $stmt->fetchAll();
+
         Http::json([
             'me'        => $user,
             'groups'    => $groups,
             'persons'   => $persons,
-            'vacations' => $stmt->fetchAll(),
+            'vacations' => $vacations,
+            'holidays'  => Holidays::between($this->pdo, $from, $to),
         ]);
     }
 
