@@ -17,6 +17,9 @@ Semesterkalender — en Vue 3 + Vite-app där personer matar in sina semesterdag
 - Inloggning med Microsoft (Entra ID), med automatiskt konto för alla i
   tenanten — se "Microsoft-inloggning" nedan
 - Adminsida för konton, grupper och gruppmedlemskap
+- Helgdagar visas i kalendern som helger; admin kan lägga till, byta namn på,
+  ta bort och importera svenska helgdagar för ett år (Nager.Date, översatta
+  till svenska)
 
 ## Arkitektur
 
@@ -129,3 +132,9 @@ och `config.php` deployas manuellt vid installationen — se skriptet för
 detaljer.
 `rsync` krävs på maskinen som deployar; skriptet avbryter med ett tydligt fel
 om det saknas.
+
+**Nya tabeller:** skriptet rör aldrig databasen. När en version lägger till en
+tabell — som `holidays` för helgdagarna — måste `db/schema.sql` köras mot
+produktionsdatabasen **före** `npm run deploy`, annars svarar `/api/bootstrap`
+med 500 för alla. Schemat använder `CREATE TABLE IF NOT EXISTS` och kan köras
+om utan att befintliga data påverkas.

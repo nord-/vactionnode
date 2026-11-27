@@ -48,12 +48,13 @@ Backend, körs i Docker-containern:
 ### Datalagring (MariaDB)
 
 Schema i `db/schema.sql`: `teams`, `users` (med `team_id`, `is_admin`,
-`password_hash`), `vacations` och `login_attempts` (inloggningsspärren i
-`app/RateLimit.php`). Kolumnen `users.sso_id` håller Entra ID-tokenets
-`oid` (aldrig `sub`, som är per app och byts om app-registreringen görs
-om). All databasåtkomst går via PDO, kapslad
-bakom klasser i `app/` (`Db`, `Persons`, m.fl.) så den kan testas isolerat
-med PHPUnit mot `vacation_test`-databasen.
+`password_hash`), `vacations`, `holidays` (`id`, `date` unik, `name`) och
+`login_attempts` (inloggningsspärren i `app/RateLimit.php`). Produktionen får
+`holidays` genom att `db/schema.sql` körs om (`CREATE TABLE IF NOT EXISTS`).
+Kolumnen `users.sso_id` håller Entra ID-tokenets `oid` (aldrig `sub`, som är
+per app och byts om app-registreringen görs om). All databasåtkomst går via
+PDO, kapslad bakom klasser i `app/` (`Db`, `Persons`, m.fl.) så den kan testas
+isolerat med PHPUnit mot `vacation_test`-databasen.
 
 ### API
 
@@ -92,6 +93,14 @@ en katalog för statiska Vite-tillgångar.
 - Personer grupperas under grupp-header-rader. Personer utan `groupId` hamnar i en
   **syntetisk "Ogrupperade"-grupp** som alltid visas sist.
 - Helger (lör/sön) får egen bakgrundsfärg på hela kolumnen.
+- Helgdagar (tabellen `holidays`) färgas som helger i `CalendarGrid`: röd
+  datumsiffra och helgdagens namn som `title`. Bootstrap returnerar `holidays`
+  för det utfyllda intervallet. Admin hanterar dem i
+  `src/components/HolidayAdmin.vue`.
+- **Import av helgdagar:** `app/Holidays/HolidayImport.php` hämtar Nager.Date v4
+  (`https://nagerholidays.com/api/v4/Holidays/SE/{år}`) via `app/Transport.php`
+  (delas med SSO). Engelska namn översätts lokalt i
+  `app/Holidays/SwedishNames.php`; okända namn sparas på engelska.
 
 ### Rättighetsmodell
 
@@ -102,6 +111,9 @@ en katalog för statiska Vite-tillgångar.
   2026-11-12, issue #2).
 - En administratör får därutöver ändra semestern för vem som helst, så att
   rättelser går att göra när någon har slutat eller är borta.
+- Helgdagar läses av alla inloggade via bootstrap; att skriva dem kräver
+  administratör: `GET /api/holidays?year=`, `POST /api/holidays`,
+  `PUT`/`DELETE /api/holidays/{id}` och `POST /api/holidays/import`.
 - Vakten körs i `app/Router.php` före varje handler och upprepas i SQL:et som
   försvar på djupet (`WHERE id = ? AND (user_id = ? OR ? = 1)` i
   `app/Handlers/VacationHandler.php`); `tests-php/GuardMatrixTest.php` är
