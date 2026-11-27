@@ -29,6 +29,18 @@ final class SchemaTest extends DbTestCase
         $this->assertSame(0, (int) $count);
     }
 
+    public function testHolidayDateIsUnique(): void
+    {
+        $this->pdo->exec("INSERT INTO holidays (id, date, name) VALUES ('h1', '2027-12-24', 'Julafton')");
+
+        try {
+            $this->pdo->exec("INSERT INTO holidays (id, date, name) VALUES ('h2', '2027-12-24', 'Annat')");
+            $this->fail('PDOException förväntades');
+        } catch (PDOException $e) {
+            $this->assertSame('23000', $e->getCode());
+        }
+    }
+
     public function testDeletingTeamUngroupsMembers(): void
     {
         $this->pdo->exec("INSERT INTO teams (id, name) VALUES ('t1', 'Team A')");

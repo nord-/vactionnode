@@ -5,6 +5,12 @@ use PDO;
 
 final class Db
 {
+    /** SQLSTATE 23000: integritetsvillkorskränkning, t.ex. UNIQUE-krock. */
+    public static function isIntegrityViolation(\PDOException $e): bool
+    {
+        return $e->getCode() === '23000';
+    }
+
     public static function connect(array $config): PDO
     {
         $dsn = sprintf(

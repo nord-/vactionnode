@@ -1,6 +1,7 @@
 <?php
 namespace App\Handlers;
 
+use App\Db;
 use App\Http;
 use App\HttpException;
 use App\Uuid;
@@ -22,7 +23,7 @@ final class GroupHandler
      */
     private function throwForIntegrityViolation(\PDOException $e): never
     {
-        if ($e->getCode() !== '23000') {
+        if (!Db::isIntegrityViolation($e)) {
             throw $e;
         }
 

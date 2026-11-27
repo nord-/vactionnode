@@ -38,3 +38,9 @@ CREATE TABLE IF NOT EXISTS login_attempts (
   INDEX ix_attempt_email (email, attempted_at),
   INDEX ix_attempt_ip (ip, attempted_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS holidays (
+  id   CHAR(36) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+  date DATE NOT NULL UNIQUE,
+  name VARCHAR(100) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
