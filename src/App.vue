@@ -63,6 +63,7 @@
         @remove-person="onRemovePerson"
         @set-password="onSetPassword"
       />
+      <HolidayAdmin class="mt-6" :data-store="dataStore" @changed="reload" />
     </template>
 
     <template v-else>
@@ -127,6 +128,7 @@ import LoginView from './components/LoginView.vue';
 import { useHashRoute } from './composables/useHashRoute.js';
 import ChangePasswordModal from './components/ChangePasswordModal.vue';
 import AdminPanel from './components/AdminPanel.vue';
+import HolidayAdmin from './components/HolidayAdmin.vue';
 import CalendarControls from './components/CalendarControls.vue';
 import CalendarGrid from './components/CalendarGrid.vue';
 import VacationModal from './components/VacationModal.vue';
@@ -162,7 +164,8 @@ const api = createApiClient({
   baseUrl: config.apiBaseUrl,
   onUnauthorized: clearSessionState,
 });
-const store = createStore(createDataStore({ api }));
+const dataStore = createDataStore({ api });
+const store = createStore(dataStore);
 
 // Fångar fel från mutate() så att en 422/403 inte blir en ohanterad
 // promise-rejection. Felmeddelandet finns redan i store.error.value (satt av
