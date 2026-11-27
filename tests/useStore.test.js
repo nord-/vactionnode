@@ -115,4 +115,44 @@ it('tar bort raden lokalt vid radering', async () => {
     expect(row.start).toBe('2026-06-17');
     expect(row.end).toBe('2026-06-21');
   });
+
+  it('sorterar grupper och personer stigande med svensk sortering vid refresh', async () => {
+    const store = createStore(fakeDataStore({
+      bootstrap: vi.fn().mockResolvedValue({
+        me: null,
+        groups: [{ id: 'g2', name: 'Öst' }, { id: 'g1', name: 'Zon' }, { id: 'g3', name: 'Alfa' }],
+        persons: [
+          { id: 'p1', name: 'Åsa', groupId: null },
+          { id: 'p2', name: 'Zara', groupId: null },
+          { id: 'p3', name: 'Adam', groupId: null },
+        ],
+        vacations: [],
+      }),
+    }));
+
+    await store.refresh('2026-06-01', '2026-06-30');
+
+    expect(store.groups.value.map((g) => g.name)).toEqual(['Alfa', 'Zon', 'Öst']);
+    expect(store.persons.value.map((p) => p.name)).toEqual(['Adam', 'Zara', 'Åsa']);
+  });
+
+  it('placerar en ny person och en omdöpt grupp på rätt plats direkt', async () => {
+    const store = createStore(fakeDataStore({
+      bootstrap: vi.fn().mockResolvedValue({
+        me: null,
+        groups: [{ id: 'g1', name: 'Alfa' }, { id: 'g2', name: 'Beta' }],
+        persons: [{ id: 'p1', name: 'Anna', groupId: null }, { id: 'p2', name: 'Cecilia', groupId: null }],
+        vacations: [],
+      }),
+      addPerson: vi.fn().mockResolvedValue({ id: 'p3', name: 'Bertil', groupId: null }),
+      renameGroup: vi.fn().mockResolvedValue({ id: 'g1', name: 'Gamma' }),
+    }));
+    await store.refresh('2026-06-01', '2026-06-30');
+
+    await store.addPerson({ name: 'Bertil' });
+    await store.renameGroup('g1', 'Gamma');
+
+    expect(store.persons.value.map((p) => p.name)).toEqual(['Anna', 'Bertil', 'Cecilia']);
+    expect(store.groups.value.map((g) => g.name)).toEqual(['Beta', 'Gamma']);
+  });
 });

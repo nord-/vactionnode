@@ -1,4 +1,5 @@
 import { ref } from 'vue';
+import { sortByName } from '../lib/sortByName.js';
 
 export function createStore(dataStore) {
   const groups = ref([]);
@@ -17,8 +18,8 @@ export function createStore(dataStore) {
     try {
       const data = await dataStore.bootstrap(from, to);
       me.value = data.me;
-      groups.value = data.groups;
-      persons.value = data.persons;
+      groups.value = sortByName(data.groups);
+      persons.value = sortByName(data.persons);
       vacations.value = data.vacations;
       holidays.value = data.holidays ?? [];
     } catch (e) {
@@ -42,28 +43,28 @@ export function createStore(dataStore) {
     };
   }
 
-  function replace(list, row) {
+  function replace(list, row, order = (rows) => rows) {
     const i = list.value.findIndex((x) => x.id === row.id);
-    if (i === -1) list.value = [...list.value, row];
-    else list.value = list.value.map((x) => (x.id === row.id ? { ...x, ...row } : x));
+    if (i === -1) list.value = order([...list.value, row]);
+    else list.value = order(list.value.map((x) => (x.id === row.id ? { ...x, ...row } : x)));
   }
 
   return {
     groups, persons, vacations, holidays, me, loading, error, refresh,
 
-    addGroup: mutate(async (name) => replace(groups, await dataStore.addGroup(name))),
-    renameGroup: mutate(async (id, name) => replace(groups, await dataStore.renameGroup(id, name))),
+    addGroup: mutate(async (name) => replace(groups, await dataStore.addGroup(name), sortByName)),
+    renameGroup: mutate(async (id, name) => replace(groups, await dataStore.renameGroup(id, name), sortByName)),
     removeGroup: mutate(async (id) => {
       await dataStore.removeGroup(id);
       groups.value = groups.value.filter((g) => g.id !== id);
       persons.value = persons.value.map((p) => (p.groupId === id ? { ...p, groupId: null } : p));
     }),
 
-    addPerson: mutate(async (payload) => replace(persons, await dataStore.addPerson(payload))),
+    addPerson: mutate(async (payload) => replace(persons, await dataStore.addPerson(payload), sortByName)),
     updatePerson: mutate(async (id, patch) =>
-      replace(persons, await dataStore.updatePerson(id, patch))),
+      replace(persons, await dataStore.updatePerson(id, patch), sortByName)),
     setPersonGroup: mutate(async (id, groupId) =>
-      replace(persons, await dataStore.setPersonGroup(id, groupId))),
+      replace(persons, await dataStore.setPersonGroup(id, groupId), sortByName)),
     removePerson: mutate(async (id) => {
       await dataStore.removePerson(id);
       persons.value = persons.value.filter((p) => p.id !== id);
